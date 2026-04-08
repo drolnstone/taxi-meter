@@ -79,9 +79,7 @@ button{width:100%;padding:16px;font-size:20px;border:none;border-radius:12px;mar
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script>
 // ============================================================
-// PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL BELOW
-// ============================================================
-const SYNC_URL = "https://script.google.com/macros/s/AKfycbw7V6qChBpxIWjAgH1qrvbGwTV6natTsRw9hi9KtOD897W25tOtsS_QGSJosgv1pGLb/exec"
+const SYNC_URL = "https://script.google.com/macros/s/AKfycbyjTEGhB3MfOvLdyyPwbIlAWsOCzAxYQkhgkveTriZLxTZ9--xGHJgngqn4gm_p_HUB/exec"
 // ============================================================
 
 let running = false
@@ -95,13 +93,13 @@ let lastPos  = null
 let speed    = 0
 let accumulatedFare = 0
 let currentTariff   = "Day"
+let tripStartTime   = null
 
 let startCoord = null
 let endCoord   = null
 
 // --------------------
-// TICK-BASED METER
-// Liverpool City Council 2025 Official Rates
+// TICK-BASED METER — Liverpool City Council 2025
 // --------------------
 const TARIFFS = {
   Day: {
@@ -176,6 +174,16 @@ function toMiles(metres){
   return (metres / 1609.34).toFixed(2)
 }
 
+// BST-aware local timestamp
+function localTimestamp(){
+  const now = new Date()
+  return now.toLocaleString("en-GB", {
+    day:"2-digit", month:"2-digit", year:"numeric",
+    hour:"2-digit", minute:"2-digit", second:"2-digit",
+    hour12: false
+  })
+}
+
 function update(){
   distanceEl.innerText = toMiles(distance) + " mi"
   timeEl.innerText     = formatTime(elapsed)
@@ -197,8 +205,97 @@ async function keepScreenAwake(){
     }
   }catch(e){}
 }
-document.addEventListener("visibilitychange",()=>{
-  if(wakeLock!==null && document.visibilityState==="visible"){ keepScreenAwake() }
+
+// --------------------
+// TRIP STATE PERSISTENCE
+// Saves every second so switching apps doesn't lose the trip
+// --------------------
+function saveTripState(){
+  if(!running) return
+  localStorage.activeTripState = JSON.stringify({
+    running,
+    distance,
+    elapsed,
+    accumulatedFare,
+    currentTariff,
+    startCoord,
+    distanceAccumulator,
+    timeAccumulator,
+    tripStartTime,
+    savedAt: Date.now()
+  })
+}
+
+function restoreTripState(){
+  const saved = localStorage.activeTripState
+  if(!saved) return false
+  try{
+    const s = JSON.parse(saved)
+    if(!s.running) return false
+
+    // Calculate time passed while app was away
+    const secondsAway = Math.floor((Date.now() - s.savedAt) / 1000)
+
+    distance            = s.distance || 0
+    accumulatedFare     = s.accumulatedFare || 0
+    currentTariff       = s.currentTariff || "Day"
+    startCoord          = s.startCoord || null
+    distanceAccumulator = s.distanceAccumulator || 0
+    timeAccumulator     = s.timeAccumulator || 0
+    tripStartTime       = s.tripStartTime || null
+    activeTariff        = TARIFFS[currentTariff] || TARIFFS.Day
+
+    // Add elapsed time including time away
+    elapsed = (s.elapsed || 0) + secondsAway
+
+    // Charge waiting time for seconds away (assume stationary while away)
+    let awayFareSeconds = secondsAway
+    while(awayFareSeconds >= activeTariff.timeStep){
+      accumulatedFare  += activeTariff.tickValue
+      accumulatedFare   = Math.round(accumulatedFare * 100) / 100
+      awayFareSeconds  -= activeTariff.timeStep
+    }
+    timeAccumulator = awayFareSeconds
+
+    return true
+  }catch(e){
+    return false
+  }
+}
+
+function clearTripState(){
+  localStorage.removeItem("activeTripState")
+}
+
+// --------------------
+// VISIBILITY — resume when switching back
+// --------------------
+document.addEventListener("visibilitychange", async ()=>{
+  if(document.visibilityState === "visible"){
+    if(wakeLock !== null) keepScreenAwake()
+    if(running){
+      // Catch up time missed while away
+      const saved = localStorage.activeTripState
+      if(saved){
+        try{
+          const s = JSON.parse(saved)
+          const secondsAway = Math.floor((Date.now() - s.savedAt) / 1000)
+          if(secondsAway > 0){
+            elapsed += secondsAway
+            let awayFareSeconds = secondsAway
+            while(awayFareSeconds >= activeTariff.timeStep){
+              accumulatedFare  += activeTariff.tickValue
+              accumulatedFare   = Math.round(accumulatedFare * 100) / 100
+              awayFareSeconds  -= activeTariff.timeStep
+            }
+            timeAccumulator = awayFareSeconds
+            saveTripState()
+            update()
+          }
+        }catch(e){}
+      }
+    }
+  }
 })
 
 // --------------------
@@ -243,14 +340,14 @@ function isUKBankHoliday(now){
   const goodFriday   = new Date(easter); goodFriday.setDate(easter.getDate()-2)
   const easterMonday = new Date(easter); easterMonday.setDate(easter.getDate()+1)
   const bankHolidays = [
-    substituted(y,0,1),   // New Year's Day
+    substituted(y,0,1),
     goodFriday,
     easterMonday,
-    firstMonday(y,4),     // Early May Bank Holiday
-    lastMonday(y,4),      // Spring Bank Holiday
-    lastMonday(y,7),      // Summer Bank Holiday
-    substituted(y,11,25), // Christmas Day
-    substituted(y,11,26)  // Boxing Day
+    firstMonday(y,4),
+    lastMonday(y,4),
+    lastMonday(y,7),
+    substituted(y,11,25),
+    substituted(y,11,26)
   ]
   return bankHolidays.some(bh => sameDay(now, bh))
 }
@@ -258,15 +355,15 @@ function isUKBankHoliday(now){
 function isExtraRate(now){
   const y = now.getFullYear()
   const ranges = [
-    [new Date(y,11,24,18,0,0), new Date(y,11,27,6,0,0)],    // Xmas Eve 6pm → Dec 27 6am
-    [new Date(y,11,31,18,0,0), new Date(y+1,0,2,6,0,0)],    // NYE 6pm → Jan 2 6am
-    [new Date(y-1,11,31,18,0,0), new Date(y,0,2,6,0,0)]     // catch Jan 1–2
+    [new Date(y,11,24,18,0,0), new Date(y,11,27,6,0,0)],
+    [new Date(y,11,31,18,0,0), new Date(y+1,0,2,6,0,0)],
+    [new Date(y-1,11,31,18,0,0), new Date(y,0,2,6,0,0)]
   ]
   return ranges.some(([start,end]) => now >= start && now < end)
 }
 
 // --------------------
-// TARIFF — called every second during trip
+// TARIFF — runs every second during trip
 // --------------------
 function updateTariff(){
   const now  = new Date()
@@ -337,6 +434,7 @@ function startTrip(){
   distanceAccumulator = 0
   timeAccumulator     = 0
   accumulatedFare     = activeTariff.base
+  tripStartTime       = new Date().toISOString()
 
   keepScreenAwake()
   startBtn.textContent = "Stop Trip"
@@ -349,6 +447,7 @@ function startTrip(){
     elapsed++
     updateTariff()
     processTick(0)
+    saveTripState()
     update()
   }, 1000)
 
@@ -397,6 +496,7 @@ function stopTrip(){
   clearInterval(timer)
   navigator.geolocation.clearWatch(watch)
   if(wakeLock){ wakeLock.release(); wakeLock=null }
+  clearTripState()
 
   endCoord             = lastPos
   startBtn.textContent = "Start Trip"
@@ -424,7 +524,7 @@ function showReceipt(miles, duration, totalStr){
     "Tariff: "+currentTariff+"\n"+
     "Start: "+(startCoord?`https://maps.google.com/?q=${startCoord.lat},${startCoord.lng}`:"N/A")+"\n"+
     "End: "+(endCoord?`https://maps.google.com/?q=${endCoord.lat},${endCoord.lng}`:"N/A")+"\n"+
-    "Date: "+new Date().toLocaleString()
+    "Date: "+localTimestamp()
   alert(receipt)
   shareReceipt(receipt)
 }
@@ -454,6 +554,7 @@ function resetTrip(){
   endCoord            = null
   distanceAccumulator = 0
   timeAccumulator     = 0
+  tripStartTime       = null
   route               = []
   polyline.setLatLngs([])
   update()
@@ -479,7 +580,7 @@ function saveTrip(total){
     fare:   Number(total),
     miles:  toMiles(distance),
     time:   formatTime(elapsed),
-    date:   new Date().toISOString(),
+    date:   localTimestamp(),
     tariff: currentTariff,
     start:  startCoord,
     end:    endCoord,
@@ -500,7 +601,7 @@ function renderHistory(){
       : '<span style="color:#ff9f0a;font-size:12px"> ● unsynced</span>'
     html += `<div class="history">
       £${Number(t.fare).toFixed(2)} • ${dist} mi • ${t.time} • ${t.tariff||"Day"}${badge}<br>
-      ${new Date(t.date).toLocaleString()}
+      ${t.date}
     </div>`
   })
   historyDiv.innerHTML = html || "<div style='color:#666'>No trips yet</div>"
@@ -586,7 +687,7 @@ async function syncToSheet(){
       trips = trips.map(t => ({...t, synced: true}))
       localStorage.trips     = JSON.stringify(trips)
       renderHistory()
-      syncStatus.innerText   = "✓ Synced "+json.inserted+" trip(s) at "+new Date().toLocaleTimeString()
+      syncStatus.innerText   = "✓ Synced "+json.inserted+" trip(s) at "+localTimestamp()
       syncStatus.style.color = "#34c759"
     } else {
       throw json.message || "Unknown error"
@@ -610,7 +711,7 @@ function notifyOwner(driver, action){
         type:      "instantLog",
         driver:    driver,
         action:    action,
-        timestamp: new Date().toISOString()
+        timestamp: localTimestamp()
       })
     })
   } catch(err){
@@ -625,10 +726,52 @@ startBtn.onclick = function(){ running ? stopTrip() : startTrip() }
 resetBtn.onclick = resetTrip
 
 // --------------------
-// INIT
+// INIT — restore trip if app was interrupted
 // --------------------
 loadDriverName()
-accumulatedFare = activeTariff.base
+updateTariff()
+
+const wasRunning = restoreTripState()
+if(wasRunning){
+  running = true
+  startBtn.textContent = "Stop Trip"
+  startBtn.className   = "stop"
+  resetBtn.disabled    = true
+  gps.innerText        = "Resuming trip..."
+  keepScreenAwake()
+
+  timer = setInterval(()=>{
+    elapsed++
+    updateTariff()
+    processTick(0)
+    saveTripState()
+    update()
+  }, 1000)
+
+  watch = navigator.geolocation.watchPosition(
+    p=>{
+      let lat = p.coords.latitude
+      let lng = p.coords.longitude
+      speed   = p.coords.speed ? p.coords.speed * 3.6 : 0
+      gps.innerText = "GPS active"
+      if(lastPos){
+        let delta = getDistance(lastPos.lat, lastPos.lng, lat, lng)
+        distance += delta
+        processTick(delta)
+      }
+      lastPos = {lat, lng}
+      route.push([lat, lng])
+      polyline.setLatLngs(route)
+      map.setView([lat, lng], 16)
+      update()
+    },
+    err=>{ gps.innerText = "GPS error" },
+    {enableHighAccuracy: true}
+  )
+} else {
+  accumulatedFare = activeTariff.base
+}
+
 update()
 renderHistory()
 updateDashboard()
