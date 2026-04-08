@@ -95,15 +95,16 @@ padding:6px 0
 }
 
 #driverInput{
-width:100%;
-padding:12px;
-font-size:18px;
-border-radius:10px;
-border:none;
-background:#2c2c2e;
-color:white;
-box-sizing:border-box;
-margin-bottom:6px;
+  width:100%;
+  padding:12px;
+  font-size:18px;
+  border-radius:10px;
+  border:none;
+  background:#2c2c2e;
+  color:white;
+  box-sizing:border-box;
+  margin-bottom:6px;
+  text-align:center;
 }
 
 #syncStatus{
@@ -301,12 +302,13 @@ updateTariff()
 // TRIP FUNCTIONS
 // --------------------
 function startTrip(){
-  if(!driverInput.value.trim()){
+    if(!driverInput.value.trim()){
     alert("Please enter your driver name before starting a trip.")
     driverInput.focus()
     return
   }
 
+  notifyOwner(driverInput.value.trim(), "Started Trip")
   running = true
   startCoord = null
   endCoord = null
@@ -365,8 +367,9 @@ function stopTrip(){
     "Time: "+duration+"\n"+
     "Fare: £"+totalStr
   )
-  if(!confirmStop) return
+    if(!confirmStop) return
 
+  notifyOwner(driverInput.value.trim(), "Ended Trip")
   running = false
   clearInterval(timer)
   navigator.geolocation.clearWatch(watch)
@@ -567,6 +570,26 @@ async function syncToSheet(){
   }
 
   syncBtn.disabled = false
+}
+
+// --------------------
+// LIVE NOTIFY
+// --------------------
+function notifyOwner(driver, action){
+  try{
+    fetch(SYNC_URL, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        type: "instantLog",
+        driver: driver,
+        action: action,
+        timestamp: new Date().toISOString()
+      })
+    });
+  } catch(err){
+    console.warn("Live log failed:", err);
+  }
 }
 
 // --------------------
