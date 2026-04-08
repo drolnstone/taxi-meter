@@ -1,81 +1,19 @@
 <!DOCTYPE html>
-
 <html>
 <head>
-
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Taxi Meter</title>
-
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
-
 <style>
-body{
-font-family:-apple-system,Arial;
-background:#0b0b0b;
-color:white;
-margin:0;
-padding:20px
-}
-
-h1{
-text-align:center;
-margin-bottom:20px
-}
-
-.fareDisplay{
-text-align:center;
-margin-bottom:25px
-}
-
-.fareLabel{
-font-size:18px;
-color:#999
-}
-
-.fareValue{
-font-size:72px;
-font-weight:bold;
-color:#FFD60A;
-letter-spacing:3px
-}
-
-#tariff{
-text-align:center;
-font-size:16px;
-margin-bottom:10px;
-padding:6px;
-border-radius:6px;
-background:#333;
-color:#fff;
-width:100px;
-margin-left:auto;
-margin-right:auto;
-}
-
-.card{
-background:#1c1c1e;
-padding:18px;
-border-radius:16px;
-margin-bottom:18px
-}
-
-.row{
-display:flex;
-justify-content:space-between;
-font-size:20px;
-margin:10px 0
-}
-
-button{
-width:100%;
-padding:16px;
-font-size:20px;
-border:none;
-border-radius:12px;
-margin-top:10px;
-cursor:pointer;
-}
-
+body{font-family:-apple-system,Arial;background:#0b0b0b;color:white;margin:0;padding:20px}
+h1{text-align:center;margin-bottom:20px}
+.fareDisplay{text-align:center;margin-bottom:25px}
+.fareLabel{font-size:18px;color:#999}
+.fareValue{font-size:72px;font-weight:bold;color:#FFD60A;letter-spacing:3px}
+#tariff{text-align:center;font-size:16px;margin-bottom:10px;padding:6px;border-radius:6px;background:#333;color:#fff;width:100px;margin-left:auto;margin-right:auto;}
+.card{background:#1c1c1e;padding:18px;border-radius:16px;margin-bottom:18px}
+.row{display:flex;justify-content:space-between;font-size:20px;margin:10px 0}
+button{width:100%;padding:16px;font-size:20px;border:none;border-radius:12px;margin-top:10px;cursor:pointer;}
 .start{background:#0a84ff;color:white}
 .stop{background:#ff3b30;color:white}
 .reset{background:#3a3a3c;color:white}
@@ -83,46 +21,15 @@ cursor:pointer;
 .export{background:#34c759;color:black}
 .sync{background:#ff9f0a;color:black}
 .sync:disabled{background:#3a3a3c;color:#888;cursor:not-allowed}
-
-#map{
-height:260px;
-border-radius:12px
-}
-
-.history{
-border-bottom:1px solid #333;
-padding:6px 0
-}
-
-#driverInput{
-  width:100%;
-  padding:12px;
-  font-size:18px;
-  border-radius:10px;
-  border:none;
-  background:#2c2c2e;
-  color:white;
-  box-sizing:border-box;
-  margin-bottom:6px;
-  text-align:center;
-}
-
-#syncStatus{
-font-size:14px;
-color:#999;
-margin-top:8px;
-text-align:center;
-min-height:20px;
-}
+#map{height:260px;border-radius:12px}
+.history{border-bottom:1px solid #333;padding:6px 0}
+#driverInput{width:100%;padding:12px;font-size:18px;border-radius:10px;border:none;background:#2c2c2e;color:white;box-sizing:border-box;margin-bottom:6px;text-align:center;}
+#syncStatus{font-size:14px;color:#999;margin-top:8px;text-align:center;min-height:20px;}
 </style>
-
 </head>
-
 <body>
 
 <h1>Taxi Meter</h1>
-
-<!-- Driver identification -->
 
 <div class="card">
   <label style="font-size:15px;color:#999">Driver Name</label><br>
@@ -133,7 +40,7 @@ min-height:20px;
 
 <div class="fareDisplay">
   <div class="fareLabel">FARE</div>
-  <div id="fare" class="fareValue">£3.50</div>
+  <div id="fare" class="fareValue">£3.40</div>
 </div>
 
 <div class="card">
@@ -170,7 +77,6 @@ min-height:20px;
 </div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-
 <script>
 // ============================================================
 // PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL BELOW
@@ -184,15 +90,46 @@ let timer
 let wakeLock = null
 
 let distance = 0
-let elapsed = 0
-let lastPos = null
-let speed = 0
+let elapsed  = 0
+let lastPos  = null
+let speed    = 0
 let accumulatedFare = 0
-let currentTariff = "Day"
+let currentTariff   = "Day"
 
 let startCoord = null
-let endCoord = null
+let endCoord   = null
 
+// --------------------
+// TICK-BASED METER
+// --------------------
+const TARIFFS = {
+  Day: {
+    base:           3.40,
+    tickValue:      0.20,
+    distStep1:      150.9,
+    distStep2:      274.3,
+    distThreshold:  41148,
+    timeStep:       60,
+    speedThreshold: 10
+  },
+  Night: {
+    base:           3.75,
+    tickValue:      0.25,
+    distStep1:      187.5,
+    distStep2:      274.3,
+    distThreshold:  41148,
+    timeStep:       60,
+    speedThreshold: 10
+  }
+}
+
+let distanceAccumulator = 0
+let timeAccumulator     = 0
+let activeTariff        = TARIFFS.Day
+
+// --------------------
+// DOM REFERENCES
+// --------------------
 const distanceEl    = document.getElementById("distance")
 const timeEl        = document.getElementById("time")
 const fareEl        = document.getElementById("fare")
@@ -209,10 +146,6 @@ const tariffElem    = document.getElementById("tariff")
 const syncBtn       = document.getElementById("syncBtn")
 const syncStatus    = document.getElementById("syncStatus")
 const driverInput   = document.getElementById("driverInput")
-
-let base    = 3.50
-let perMile = 1.88
-let perMin  = 0.25
 
 // --------------------
 // MAP
@@ -244,11 +177,14 @@ function formatTime(sec){
          String(s).padStart(2,"0")
 }
 
+function toMiles(metres){
+  return (metres / 1609.34).toFixed(2)
+}
+
 function update(){
-  let miles = distance / 1609.34
-  distanceEl.innerText = miles.toFixed(2) + " mi"
-  timeEl.innerText = formatTime(elapsed)
-  fareEl.innerText = "£" + accumulatedFare.toFixed(2)
+  distanceEl.innerText = toMiles(distance) + " mi"
+  timeEl.innerText     = formatTime(elapsed)
+  fareEl.innerText     = "£" + accumulatedFare.toFixed(2)
 }
 
 function speakFare(msg){
@@ -271,32 +207,54 @@ document.addEventListener("visibilitychange",()=>{
 })
 
 // --------------------
-// TARIFF (sets real rates)
+// TARIFF
 // --------------------
 function updateTariff(){
-  let hour = new Date().getHours()
-  let isNight = hour < 6 || hour >= 22
+  let hour    = new Date().getHours()
+  let isNight = hour < 6 || hour >= 21
 
   if(isNight){
-    base    = 4.20
-    perMile = 2.40
-    perMin  = 0.35
-    currentTariff = "Night"
-    tariffElem.innerText = "Night"
+    activeTariff                = TARIFFS.Night
+    currentTariff               = "Night"
+    tariffElem.innerText        = "Night"
     tariffElem.style.background = "#2c1f4a"
-    tariffElem.style.color = "#bf9fff"
+    tariffElem.style.color      = "#bf9fff"
   } else {
-    base    = 3.50
-    perMile = 1.88
-    perMin  = 0.25
-    currentTariff = "Day"
-    tariffElem.innerText = "Day"
+    activeTariff                = TARIFFS.Day
+    currentTariff               = "Day"
+    tariffElem.innerText        = "Day"
     tariffElem.style.background = "#333"
-    tariffElem.style.color = "#fff"
+    tariffElem.style.color      = "#fff"
   }
 }
 setInterval(updateTariff, 30000)
 updateTariff()
+
+// --------------------
+// TICK METER LOGIC
+// --------------------
+function processTick(deltaDistance){
+  if(speed > activeTariff.speedThreshold){
+    distanceAccumulator += deltaDistance
+    let step = distance < activeTariff.distThreshold
+      ? activeTariff.distStep1
+      : activeTariff.distStep2
+    if(distanceAccumulator >= step){
+      accumulatedFare     += activeTariff.tickValue
+      accumulatedFare      = Math.round(accumulatedFare * 100) / 100
+      distanceAccumulator  = 0
+    }
+    timeAccumulator = 0
+  } else {
+    timeAccumulator++
+    if(timeAccumulator >= activeTariff.timeStep){
+      accumulatedFare  += activeTariff.tickValue
+      accumulatedFare   = Math.round(accumulatedFare * 100) / 100
+      timeAccumulator   = 0
+    }
+    distanceAccumulator = 0
+  }
+}
 
 // --------------------
 // TRIP FUNCTIONS
@@ -309,21 +267,23 @@ function startTrip(){
   }
 
   notifyOwner(driverInput.value.trim(), "Started Trip")
-  running = true
-  startCoord = null
-  endCoord = null
-  accumulatedFare = base
+  running             = true
+  startCoord          = null
+  endCoord            = null
+  distanceAccumulator = 0
+  timeAccumulator     = 0
+  accumulatedFare     = activeTariff.base
 
   keepScreenAwake()
   startBtn.textContent = "Stop Trip"
-  startBtn.className = "stop"
-  resetBtn.disabled = true
+  startBtn.className   = "stop"
+  resetBtn.disabled    = true
 
   speakFare("Trip started")
 
   timer = setInterval(()=>{
     elapsed++
-    if(speed <= 10){ accumulatedFare += perMin / 60 }
+    processTick(0)
     update()
   }, 1000)
 
@@ -331,7 +291,7 @@ function startTrip(){
     p=>{
       let lat = p.coords.latitude
       let lng = p.coords.longitude
-      speed = p.coords.speed ? p.coords.speed * 3.6 : 0
+      speed   = p.coords.speed ? p.coords.speed * 3.6 : 0
       gps.innerText = "GPS active"
 
       if(!startCoord){ startCoord = {lat, lng} }
@@ -339,9 +299,7 @@ function startTrip(){
       if(lastPos){
         let delta = getDistance(lastPos.lat, lastPos.lng, lat, lng)
         distance += delta
-        if(speed > 10){
-          accumulatedFare += (delta / 1609.34) * perMile
-        }
+        processTick(delta)
       }
 
       lastPos = {lat, lng}
@@ -357,7 +315,7 @@ function startTrip(){
 
 function stopTrip(){
   if(!running) return
-  let miles = (distance/1609.34).toFixed(2)
+  let miles    = toMiles(distance)
   let duration = formatTime(elapsed)
   let totalStr = accumulatedFare.toFixed(2)
 
@@ -375,10 +333,10 @@ function stopTrip(){
   navigator.geolocation.clearWatch(watch)
   if(wakeLock){ wakeLock.release(); wakeLock=null }
 
-  endCoord = lastPos
+  endCoord             = lastPos
   startBtn.textContent = "Start Trip"
-  startBtn.className = "start"
-  resetBtn.disabled = false
+  startBtn.className   = "start"
+  resetBtn.disabled    = false
 
   speakFare("Trip complete. Total fare is "+totalStr+" pounds")
 
@@ -395,7 +353,7 @@ function showReceipt(miles, duration, totalStr){
   let receipt =
     "Taxi Receipt\n\n"+
     "Driver: "+(driverInput.value.trim()||"Unknown")+"\n"+
-    "Distance: "+miles+" miles\n"+
+    "Distance: "+miles+" mi\n"+
     "Time: "+duration+"\n"+
     "Fare: £"+totalStr+"\n"+
     "Tariff: "+currentTariff+"\n"+
@@ -423,25 +381,27 @@ async function shareReceipt(receipt){
 }
 
 function resetTrip(){
-  distance = 0
-  elapsed = 0
-  accumulatedFare = 0
-  lastPos = null
-  startCoord = null
-  endCoord = null
-  route = []
+  distance            = 0
+  elapsed             = 0
+  accumulatedFare     = 0
+  lastPos             = null
+  startCoord          = null
+  endCoord            = null
+  distanceAccumulator = 0
+  timeAccumulator     = 0
+  route               = []
   polyline.setLatLngs([])
   update()
 }
 
 function getDistance(a,b,c,d){
-  const R = 6371000
+  const R  = 6371000
   const p1 = a*Math.PI/180
   const p2 = c*Math.PI/180
   const dp = (c-a)*Math.PI/180
   const dl = (d-b)*Math.PI/180
-  const x = Math.sin(dp/2)**2 + Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2
-  const y = 2*Math.atan2(Math.sqrt(x), Math.sqrt(1-x))
+  const x  = Math.sin(dp/2)**2 + Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2
+  const y  = 2*Math.atan2(Math.sqrt(x), Math.sqrt(1-x))
   return R*y
 }
 
@@ -452,7 +412,7 @@ function saveTrip(total){
   let trips = JSON.parse(localStorage.trips||"[]")
   trips.unshift({
     fare:   Number(total),
-    km:     (distance/1000).toFixed(2),
+    miles:  toMiles(distance),
     time:   formatTime(elapsed),
     date:   new Date().toISOString(),
     tariff: currentTariff,
@@ -467,13 +427,14 @@ function saveTrip(total){
 
 function renderHistory(){
   let trips = JSON.parse(localStorage.trips||"[]")
-  let html = ""
+  let html  = ""
   trips.slice(0,5).forEach(t=>{
+    let dist  = t.miles || (t.km ? (t.km * 0.621371).toFixed(2) : "0.00")
     let badge = t.synced
       ? '<span style="color:#34c759;font-size:12px"> ✓ synced</span>'
       : '<span style="color:#ff9f0a;font-size:12px"> ● unsynced</span>'
     html += `<div class="history">
-      £${Number(t.fare).toFixed(2)} • ${t.km} km • ${t.time} • ${t.tariff||"Day"}${badge}<br>
+      £${Number(t.fare).toFixed(2)} • ${dist} mi • ${t.time} • ${t.tariff||"Day"}${badge}<br>
       ${new Date(t.date).toLocaleString()}
     </div>`
   })
@@ -484,11 +445,12 @@ function exportTrips(){
   let trips = JSON.parse(localStorage.trips||"[]")
   if(trips.length===0){ alert("No trips"); return }
   let driver = driverInput.value.trim() || "Unknown"
-  let csv = "Driver,Date,Distance km,Time,Fare,Tariff,Start,End\n"
+  let csv    = "Driver,Date,Distance (mi),Time,Fare,Tariff,Start,End\n"
   trips.forEach(t=>{
-    let s = t.start ? `${t.start.lat} ${t.start.lng}` : "N/A"
-    let e = t.end   ? `${t.end.lat} ${t.end.lng}`     : "N/A"
-    csv += `${driver},${t.date},${t.km},${t.time},${t.fare},${t.tariff||"Day"},${s},${e}\n`
+    let dist = t.miles || (t.km ? (t.km * 0.621371).toFixed(2) : "0.00")
+    let s    = t.start ? `${t.start.lat} ${t.start.lng}` : "N/A"
+    let e    = t.end   ? `${t.end.lat} ${t.end.lng}`     : "N/A"
+    csv += `${driver},${t.date},${dist},${t.time},${t.fare},${t.tariff||"Day"},${s},${e}\n`
   })
   let blob = new Blob([csv],{type:"text/csv"})
   let link = document.createElement("a")
@@ -512,11 +474,11 @@ function updateDashboard(){
   })
 
   let avg = trips.length ? life/trips.length : 0
-  todayEarnElem.innerText  = todayEarn.toFixed(2)
-  weekEarnElem.innerText   = week.toFixed(2)
-  monthEarnElem.innerText  = month.toFixed(2)
-  lifeEarnElem.innerText   = life.toFixed(2)
-  avgFareElem.innerText    = avg.toFixed(2)
+  todayEarnElem.innerText = todayEarn.toFixed(2)
+  weekEarnElem.innerText  = week.toFixed(2)
+  monthEarnElem.innerText = month.toFixed(2)
+  lifeEarnElem.innerText  = life.toFixed(2)
+  avgFareElem.innerText   = avg.toFixed(2)
 }
 
 // --------------------
@@ -535,37 +497,37 @@ async function syncToSheet(){
     return
   }
 
-  let trips = JSON.parse(localStorage.trips||"[]")
+  let trips    = JSON.parse(localStorage.trips||"[]")
   let unsynced = trips.filter(t => !t.synced)
 
   if(unsynced.length === 0){
-    syncStatus.innerText = "✓ All trips already synced."
+    syncStatus.innerText   = "✓ All trips already synced."
     syncStatus.style.color = "#34c759"
     return
   }
 
-  syncBtn.disabled = true
+  syncBtn.disabled       = true
   syncStatus.style.color = "#999"
-  syncStatus.innerText = "Syncing "+unsynced.length+" trip(s)..."
+  syncStatus.innerText   = "Syncing "+unsynced.length+" trip(s)..."
 
   try{
-    let res = await fetch(SYNC_URL, {
+    let res  = await fetch(SYNC_URL, {
       method: "POST",
-      body: JSON.stringify({ driver, trips: unsynced })
+      body:   JSON.stringify({ driver, trips: unsynced })
     })
     let json = await res.json()
 
     if(json.status === "ok"){
       trips = trips.map(t => ({...t, synced: true}))
-      localStorage.trips = JSON.stringify(trips)
+      localStorage.trips     = JSON.stringify(trips)
       renderHistory()
-      syncStatus.innerText = "✓ Synced "+json.inserted+" trip(s) at "+new Date().toLocaleTimeString()
+      syncStatus.innerText   = "✓ Synced "+json.inserted+" trip(s) at "+new Date().toLocaleTimeString()
       syncStatus.style.color = "#34c759"
     } else {
       throw json.message || "Unknown error"
     }
   }catch(err){
-    syncStatus.innerText = "✗ Sync failed: "+err
+    syncStatus.innerText   = "✗ Sync failed: "+err
     syncStatus.style.color = "#ff3b30"
   }
 
@@ -580,9 +542,9 @@ function notifyOwner(driver, action){
     fetch(SYNC_URL, {
       method: "POST",
       body: JSON.stringify({
-        type: "instantLog",
-        driver: driver,
-        action: action,
+        type:      "instantLog",
+        driver:    driver,
+        action:    action,
         timestamp: new Date().toISOString()
       })
     })
@@ -601,12 +563,11 @@ resetBtn.onclick = resetTrip
 // INIT
 // --------------------
 loadDriverName()
-accumulatedFare = base
+accumulatedFare = activeTariff.base
 update()
 renderHistory()
 updateDashboard()
 
 </script>
-
 </body>
 </html>
