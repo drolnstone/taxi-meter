@@ -302,7 +302,7 @@ updateTariff()
 // TRIP FUNCTIONS
 // --------------------
 function startTrip(){
-    if(!driverInput.value.trim()){
+  if(!driverInput.value.trim()){
     alert("Please enter your driver name before starting a trip.")
     driverInput.focus()
     return
@@ -367,7 +367,7 @@ function stopTrip(){
     "Time: "+duration+"\n"+
     "Fare: £"+totalStr
   )
-    if(!confirmStop) return
+  if(!confirmStop) return
 
   notifyOwner(driverInput.value.trim(), "Ended Trip")
   running = false
@@ -579,16 +579,15 @@ function notifyOwner(driver, action){
   try{
     fetch(SYNC_URL, {
       method: "POST",
-      headers: {"Content-Type": "application/json"},
       body: JSON.stringify({
         type: "instantLog",
         driver: driver,
         action: action,
         timestamp: new Date().toISOString()
       })
-    });
+    })
   } catch(err){
-    console.warn("Live log failed:", err);
+    console.warn("Live log failed:", err)
   }
 }
 
