@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Taxi Meter</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+
+<style>
+body{
+font-family:-apple-system,Arial;
+background:#0b0b0b;
+color:white;
+margin:0;
+padding:20px
+}
+
+h1{
+text-align:center;
+margin-bottom:20px
+}
+
+.fareDisplay{
+text-align:center;
+margin-bottom:25px
+}
+
+.fareLabel{
+font-size:18px;
+color:#999
+}
+
+.fareValue{
+font-size:72px;
+font-weight:bold;
+color:#FFD60A;
+letter-spacing:3px
+}
+
+#tariff{
+text-align:center;
+font-size:16px;
+margin-bottom:10px;
+padding:6px;
+border-radius:6px;
+background:#333;
+color:#fff;
+width:100px;
+margin-left:auto;
+margin-right:auto;
+}
+
+.card{
+background:#1c1c1e;
+padding:18px;
+border-radius:16px;
+margin-bottom:18px
+}
+
+.row{
+display:flex;
+justify-content:space-between;
+font-size:20px;
+margin:10px 0
+}
+
+button{
+width:100%;
+padding:16px;
+font-size:20px;
+border:none;
+border-radius:12px;
+margin-top:10px;
+cursor:pointer;
+}
+
+.start{background:#0a84ff;color:white}
+.stop{background:#ff3b30;color:white}
+.reset{background:#3a3a3c;color:white}
+.reset:disabled{background:#222;color:#555;cursor:not-allowed}
+.export{background:#34c759;color:black}
+.sync{background:#ff9f0a;color:black}
+.sync:disabled{background:#3a3a3c;color:#888;cursor:not-allowed}
+
+#map{
+height:260px;
+border-radius:12px
+}
+
+.history{
+border-bottom:1px solid #333;
+padding:6px 0
+}
+
+#driverInput{
+width:100%;
+padding:12px;
+font-size:18px;
+border-radius:10px;
+border:none;
+background:#2c2c2e;
+color:white;
+box-sizing:border-box;
+margin-bottom:6px;
+}
+
+#syncStatus{
+font-size:14px;
+color:#999;
+margin-top:8px;
+text-align:center;
+min-height:20px;
+}
+</style>
+
+</head>
+
+<body>
+
+<h1>Taxi Meter</h1>
+
+<!-- Driver identification -->
+
+<div class="card">
+  <label style="font-size:15px;color:#999">Driver Name</label><br>
+  <input id="driverInput" type="text" placeholder="Enter your name" oninput="saveDriverName()">
+</div>
+
+<div id="tariff">Day</div>
+
+<div class="fareDisplay">
+  <div class="fareLabel">FARE</div>
+  <div id="fare" class="fareValue">£3.50</div>
+</div>
+
+<div class="card">
+  <div class="row"><span>Distance</span><span id="distance">0.00 mi</span></div>
+  <div class="row"><span>Time</span><span id="time">00:00:00</span></div>
+</div>
+
+<div class="card">
+  <button id="startBtn" class="start">Start Trip</button>
+  <button id="resetBtn" class="reset">Reset</button>
+  <div id="gps">GPS idle</div>
+</div>
+
+<div class="card">
+  <h3>Route</h3>
+  <div id="map"></div>
+</div>
+
+<div class="card">
+  <h3>Earnings Dashboard</h3>
+  <div>Today: £<span id="todayEarn">0</span></div>
+  <div>This week: £<span id="weekEarn">0</span></div>
+  <div>This month: £<span id="monthEarn">0</span></div>
+  <div>Lifetime: £<span id="lifeEarn">0</span></div>
+  <div>Average fare: £<span id="avgFare">0</span></div>
+</div>
+
+<div class="card">
+  <h3>Trip History (Latest 5)</h3>
+  <div id="history"></div>
+  <button class="export" onclick="exportTrips()">Export CSV</button>
+  <button id="syncBtn" class="sync" onclick="syncToSheet()">Sync to Google Sheets</button>
+  <div id="syncStatus"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<script>
+// ============================================================
+// PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL BELOW
+// ============================================================
+const SYNC_URL = "https://script.google.com/macros/s/AKfycbwR_92ZVG_y04qf6xLGwFBInfV2KN8CP0Z0unVPJHHtpckbta7TKNNbK6OXHKodm0_L/exec"
+// ============================================================
+
+let running = false
+let watch
+let timer
+let wakeLock = null
+
+let distance = 0
+let elapsed = 0
+let lastPos = null
+let speed = 0
+let accumulatedFare = 0
+let currentTariff = "Day"
+
+let startCoord = null
+let endCoord = null
+
+const distanceEl    = document.getElementById("distance")
+const timeEl        = document.getElementById("time")
+const fareEl        = document.getElementById("fare")
+const startBtn      = document.getElementById("startBtn")
+const resetBtn      = document.getElementById("resetBtn")
+const gps           = document.getElementById("gps")
+const historyDiv    = document.getElementById("history")
+const todayEarnElem = document.getElementById("todayEarn")
+const weekEarnElem  = document.getElementById("weekEarn")
+const monthEarnElem = document.getElementById("monthEarn")
+const lifeEarnElem  = document.getElementById("lifeEarn")
+const avgFareElem   = document.getElementById("avgFare")
+const tariffElem    = document.getElementById("tariff")
+const syncBtn       = document.getElementById("syncBtn")
+const syncStatus    = document.getElementById("syncStatus")
+const driverInput   = document.getElementById("driverInput")
+
+let base    = 3.50
+let perMile = 1.88
+let perMin  = 0.25
+
+// --------------------
+// MAP
+// --------------------
+let map = L.map("map").setView([0,0],13)
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map)
+let polyline = L.polyline([], {color:"lime"}).addTo(map)
+let route = []
+
+// --------------------
+// DRIVER NAME
+// --------------------
+function saveDriverName(){
+  localStorage.driverName = driverInput.value.trim()
+}
+function loadDriverName(){
+  driverInput.value = localStorage.driverName || ""
+}
+
+// --------------------
+// HELPERS
+// --------------------
+function formatTime(sec){
+  let h = Math.floor(sec/3600)
+  let m = Math.floor((sec%3600)/60)
+  let s = sec%60
+  return String(h).padStart(2,"0")+":"+
+         String(m).padStart(2,"0")+":"+
+         String(s).padStart(2,"0")
+}
+
+function update(){
+  let miles = distance / 1609.34
+  distanceEl.innerText = miles.toFixed(2) + " mi"
+  timeEl.innerText = formatTime(elapsed)
+  fareEl.innerText = "£" + accumulatedFare.toFixed(2)
+}
+
+function speakFare(msg){
+  let speech = new SpeechSynthesisUtterance(msg)
+  speechSynthesis.speak(speech)
+}
+
+// --------------------
+// WAKE LOCK
+// --------------------
+async function keepScreenAwake(){
+  try{
+    if("wakeLock" in navigator){
+      wakeLock = await navigator.wakeLock.request("screen")
+    }
+  }catch(e){}
+}
+document.addEventListener("visibilitychange",()=>{
+  if(wakeLock!==null && document.visibilityState==="visible"){ keepScreenAwake() }
+})
+
+// --------------------
+// TARIFF (sets real rates)
+// --------------------
+function updateTariff(){
+  let hour = new Date().getHours()
+  let isNight = hour < 6 || hour >= 22
+
+  if(isNight){
+    base    = 4.20
+    perMile = 2.40
+    perMin  = 0.35
+    currentTariff = "Night"
+    tariffElem.innerText = "Night"
+    tariffElem.style.background = "#2c1f4a"
+    tariffElem.style.color = "#bf9fff"
+  } else {
+    base    = 3.50
+    perMile = 1.88
+    perMin  = 0.25
+    currentTariff = "Day"
+    tariffElem.innerText = "Day"
+    tariffElem.style.background = "#333"
+    tariffElem.style.color = "#fff"
+  }
+}
+setInterval(updateTariff, 30000)
+updateTariff()
+
+// --------------------
+// TRIP FUNCTIONS
+// --------------------
+function startTrip(){
+  if(!driverInput.value.trim()){
+    alert("Please enter your driver name before starting a trip.")
+    driverInput.focus()
+    return
+  }
+
+  running = true
+  startCoord = null
+  endCoord = null
+  accumulatedFare = base
+
+  keepScreenAwake()
+  startBtn.textContent = "Stop Trip"
+  startBtn.className = "stop"
+  resetBtn.disabled = true
+
+  speakFare("Trip started")
+
+  timer = setInterval(()=>{
+    elapsed++
+    if(speed <= 10){ accumulatedFare += perMin / 60 }
+    update()
+  }, 1000)
+
+  watch = navigator.geolocation.watchPosition(
+    p=>{
+      let lat = p.coords.latitude
+      let lng = p.coords.longitude
+      speed = p.coords.speed ? p.coords.speed * 3.6 : 0
+      gps.innerText = "GPS active"
+
+      if(!startCoord){ startCoord = {lat, lng} }
+
+      if(lastPos){
+        let delta = getDistance(lastPos.lat, lastPos.lng, lat, lng)
+        distance += delta
+        if(speed > 10){
+          accumulatedFare += (delta / 1609.34) * perMile
+        }
+      }
+
+      lastPos = {lat, lng}
+      route.push([lat, lng])
+      polyline.setLatLngs(route)
+      map.setView([lat, lng], 16)
+      update()
+    },
+    err=>{ gps.innerText = "GPS error" },
+    {enableHighAccuracy: true}
+  )
+}
+
+function stopTrip(){
+  if(!running) return
+  let miles = (distance/1609.34).toFixed(2)
+  let duration = formatTime(elapsed)
+  let totalStr = accumulatedFare.toFixed(2)
+
+  let confirmStop = confirm(
+    "End this trip?\n\n"+
+    "Distance: "+miles+" mi\n"+
+    "Time: "+duration+"\n"+
+    "Fare: £"+totalStr
+  )
+  if(!confirmStop) return
+
+  running = false
+  clearInterval(timer)
+  navigator.geolocation.clearWatch(watch)
+  if(wakeLock){ wakeLock.release(); wakeLock=null }
+
+  endCoord = lastPos
+  startBtn.textContent = "Start Trip"
+  startBtn.className = "start"
+  resetBtn.disabled = false
+
+  speakFare("Trip complete. Total fare is "+totalStr+" pounds")
+
+  saveTrip(totalStr)
+  showReceipt(miles, duration, totalStr)
+  update()
+  resetTrip()
+}
+
+// --------------------
+// RECEIPT
+// --------------------
+function showReceipt(miles, duration, totalStr){
+  let receipt =
+    "Taxi Receipt\n\n"+
+    "Driver: "+(driverInput.value.trim()||"Unknown")+"\n"+
+    "Distance: "+miles+" miles\n"+
+    "Time: "+duration+"\n"+
+    "Fare: £"+totalStr+"\n"+
+    "Tariff: "+currentTariff+"\n"+
+    "Start: "+(startCoord?`https://maps.google.com/?q=${startCoord.lat},${startCoord.lng}`:"N/A")+"\n"+
+    "End: "+(endCoord?`https://maps.google.com/?q=${endCoord.lat},${endCoord.lng}`:"N/A")+"\n"+
+    "Date: "+new Date().toLocaleString()
+  alert(receipt)
+  shareReceipt(receipt)
+}
+
+async function shareReceipt(receipt){
+  try{
+    if(navigator.share){ await navigator.share({title:"Taxi Receipt",text:receipt}); return }
+    throw "noShare"
+  }catch(e){
+    try{ await navigator.clipboard.writeText(receipt); alert("Receipt copied to clipboard.") }
+    catch(e2){
+      let blob = new Blob([receipt],{type:"text/plain"})
+      let link = document.createElement("a")
+      link.href = URL.createObjectURL(blob)
+      link.download = "taxi_receipt.txt"
+      link.click()
+    }
+  }
+}
+
+function resetTrip(){
+  distance = 0
+  elapsed = 0
+  accumulatedFare = 0
+  lastPos = null
+  startCoord = null
+  endCoord = null
+  route = []
+  polyline.setLatLngs([])
+  update()
+}
+
+function getDistance(a,b,c,d){
+  const R = 6371000
+  const p1 = a*Math.PI/180
+  const p2 = c*Math.PI/180
+  const dp = (c-a)*Math.PI/180
+  const dl = (d-b)*Math.PI/180
+  const x = Math.sin(dp/2)**2 + Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2
+  const y = 2*Math.atan2(Math.sqrt(x), Math.sqrt(1-x))
+  return R*y
+}
+
+// --------------------
+// HISTORY & DASHBOARD
+// --------------------
+function saveTrip(total){
+  let trips = JSON.parse(localStorage.trips||"[]")
+  trips.unshift({
+    fare:   Number(total),
+    km:     (distance/1000).toFixed(2),
+    time:   formatTime(elapsed),
+    date:   new Date().toISOString(),
+    tariff: currentTariff,
+    start:  startCoord,
+    end:    endCoord,
+    synced: false
+  })
+  localStorage.trips = JSON.stringify(trips)
+  renderHistory()
+  updateDashboard()
+}
+
+function renderHistory(){
+  let trips = JSON.parse(localStorage.trips||"[]")
+  let html = ""
+  trips.slice(0,5).forEach(t=>{
+    let badge = t.synced
+      ? '<span style="color:#34c759;font-size:12px"> ✓ synced</span>'
+      : '<span style="color:#ff9f0a;font-size:12px"> ● unsynced</span>'
+    html += `<div class="history">
+      £${Number(t.fare).toFixed(2)} • ${t.km} km • ${t.time} • ${t.tariff||"Day"}${badge}<br>
+      ${new Date(t.date).toLocaleString()}
+    </div>`
+  })
+  historyDiv.innerHTML = html || "<div style='color:#666'>No trips yet</div>"
+}
+
+function exportTrips(){
+  let trips = JSON.parse(localStorage.trips||"[]")
+  if(trips.length===0){ alert("No trips"); return }
+  let driver = driverInput.value.trim() || "Unknown"
+  let csv = "Driver,Date,Distance km,Time,Fare,Tariff,Start,End\n"
+  trips.forEach(t=>{
+    let s = t.start ? `${t.start.lat} ${t.start.lng}` : "N/A"
+    let e = t.end   ? `${t.end.lat} ${t.end.lng}`     : "N/A"
+    csv += `${driver},${t.date},${t.km},${t.time},${t.fare},${t.tariff||"Day"},${s},${e}\n`
+  })
+  let blob = new Blob([csv],{type:"text/csv"})
+  let link = document.createElement("a")
+  link.href = URL.createObjectURL(blob)
+  link.download = "taxi_trips.csv"
+  link.click()
+}
+
+function updateDashboard(){
+  let trips = JSON.parse(localStorage.trips||"[]")
+  let today = new Date()
+  let todayEarn=0, week=0, month=0, life=0
+
+  trips.forEach(t=>{
+    let d = new Date(t.date)
+    let f = Number(t.fare)
+    life += f
+    if(d.toDateString() === today.toDateString()) todayEarn += f
+    if((today - d)/(1000*60*60*24) < 7) week += f
+    if(d.getMonth()===today.getMonth() && d.getFullYear()===today.getFullYear()) month += f
+  })
+
+  let avg = trips.length ? life/trips.length : 0
+  todayEarnElem.innerText  = todayEarn.toFixed(2)
+  weekEarnElem.innerText   = week.toFixed(2)
+  monthEarnElem.innerText  = month.toFixed(2)
+  lifeEarnElem.innerText   = life.toFixed(2)
+  avgFareElem.innerText    = avg.toFixed(2)
+}
+
+// --------------------
+// SYNC TO GOOGLE SHEETS
+// --------------------
+async function syncToSheet(){
+  if(SYNC_URL === "PASTE_YOUR_URL_HERE"){
+    alert("Please paste your Google Apps Script URL into the SYNC_URL variable in this file.")
+    return
+  }
+
+  let driver = driverInput.value.trim()
+  if(!driver){
+    alert("Please enter your driver name before syncing.")
+    driverInput.focus()
+    return
+  }
+
+  let trips = JSON.parse(localStorage.trips||"[]")
+  let unsynced = trips.filter(t => !t.synced)
+
+  if(unsynced.length === 0){
+    syncStatus.innerText = "✓ All trips already synced."
+    syncStatus.style.color = "#34c759"
+    return
+  }
+
+  syncBtn.disabled = true
+  syncStatus.style.color = "#999"
+  syncStatus.innerText = "Syncing "+unsynced.length+" trip(s)..."
+
+  try{
+    let res = await fetch(SYNC_URL, {
+      method: "POST",
+      body: JSON.stringify({ driver, trips: unsynced })
+    })
+    let json = await res.json()
+
+    if(json.status === "ok"){
+      trips = trips.map(t => ({...t, synced: true}))
+      localStorage.trips = JSON.stringify(trips)
+      renderHistory()
+      syncStatus.innerText = "✓ Synced "+json.inserted+" trip(s) at "+new Date().toLocaleTimeString()
+      syncStatus.style.color = "#34c759"
+    } else {
+      throw json.message || "Unknown error"
+    }
+  }catch(err){
+    syncStatus.innerText = "✗ Sync failed: "+err
+    syncStatus.style.color = "#ff3b30"
+  }
+
+  syncBtn.disabled = false
+}
+
+// --------------------
+// BUTTON EVENTS
+// --------------------
+startBtn.onclick = function(){ running ? stopTrip() : startTrip() }
+resetBtn.onclick = resetTrip
+
+// --------------------
+// INIT
+// --------------------
+loadDriverName()
+accumulatedFare = base
+update()
+renderHistory()
+updateDashboard()
+
+</script>
+
+</body>
+</html>
