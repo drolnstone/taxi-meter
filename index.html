@@ -26,7 +26,6 @@ button{width:100%;padding:16px;font-size:20px;border:none;border-radius:12px;mar
 .history{border-bottom:1px solid #333;padding:6px 0}
 #driverInput{width:100%;padding:12px;font-size:18px;border-radius:10px;border:none;background:#2c2c2e;color:white;box-sizing:border-box;margin-bottom:6px;text-align:center;}
 #syncStatus{font-size:14px;color:#999;margin-top:8px;text-align:center;min-height:20px;}
-/* Only new additions below — ID gate extras */
 #verifyBtn{background:#0a84ff;color:white;margin-top:6px}
 #verifyBtn:disabled{background:#222;color:#555;cursor:not-allowed}
 #driverNameDisplay{display:none;margin-top:6px;padding:10px;background:#2c2c2e;border-radius:10px;font-size:16px;color:#34c759;text-align:center;border-left:3px solid #34c759}
@@ -89,7 +88,7 @@ button{width:100%;padding:16px;font-size:20px;border:none;border-radius:12px;mar
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
 <script>
-const SYNC_URL = "https://script.google.com/macros/s/AKfycbyjTEGhB3MfOvLdyyPwbIlAWsOCzAxYQkhgkveTriZLxTZ9--xGHJgngqn4gm_p_HUB/exec"
+const SYNC_URL = "https://script.google.com/macros/s/AKfycbxGTY9PF1qk88L79bxNjUncUmF9yrwBHMFoILq7iZhs1E6tPqFNfZzTZuSNwiESMLnL/exec"
 
 let running = false, watch, timer, wakeLock = null
 let distance = 0, elapsed = 0, lastPos = null, speed = 0
@@ -104,25 +103,25 @@ const TARIFFS = {
 }
 let distanceAccumulator = 0, timeAccumulator = 0, activeTariff = TARIFFS.Day
 
-const distanceEl       = document.getElementById("distance")
-const timeEl           = document.getElementById("time")
-const fareEl           = document.getElementById("fare")
-const startBtn         = document.getElementById("startBtn")
-const resetBtn         = document.getElementById("resetBtn")
-const gps              = document.getElementById("gps")
-const historyDiv       = document.getElementById("history")
-const todayEarnElem    = document.getElementById("todayEarn")
-const weekEarnElem     = document.getElementById("weekEarn")
-const monthEarnElem    = document.getElementById("monthEarn")
-const lifeEarnElem     = document.getElementById("lifeEarn")
-const avgFareElem      = document.getElementById("avgFare")
-const tariffElem       = document.getElementById("tariff")
-const syncBtn          = document.getElementById("syncBtn")
-const syncStatus       = document.getElementById("syncStatus")
-const driverInput      = document.getElementById("driverInput")
-const verifyBtn        = document.getElementById("verifyBtn")
+const distanceEl        = document.getElementById("distance")
+const timeEl            = document.getElementById("time")
+const fareEl            = document.getElementById("fare")
+const startBtn          = document.getElementById("startBtn")
+const resetBtn          = document.getElementById("resetBtn")
+const gps               = document.getElementById("gps")
+const historyDiv        = document.getElementById("history")
+const todayEarnElem     = document.getElementById("todayEarn")
+const weekEarnElem      = document.getElementById("weekEarn")
+const monthEarnElem     = document.getElementById("monthEarn")
+const lifeEarnElem      = document.getElementById("lifeEarn")
+const avgFareElem       = document.getElementById("avgFare")
+const tariffElem        = document.getElementById("tariff")
+const syncBtn           = document.getElementById("syncBtn")
+const syncStatus        = document.getElementById("syncStatus")
+const driverInput       = document.getElementById("driverInput")
+const verifyBtn         = document.getElementById("verifyBtn")
 const driverNameDisplay = document.getElementById("driverNameDisplay")
-const idStatus         = document.getElementById("idStatus")
+const idStatus          = document.getElementById("idStatus")
 
 let map = L.map("map").setView([0,0],13)
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map)
@@ -268,13 +267,30 @@ function processTick(deltaDistance){
   }
 }
 
-function startTrip(){
+async function startTrip(){
   if(!validatedDriverId){ alert("Please verify your Driver ID before starting a trip."); driverInput.focus(); return }
+
+  // Re-validate against server every time a trip starts
+  startBtn.disabled=true; startBtn.textContent="Checking..."
+  try{
+    const res  = await fetch(SYNC_URL,{method:"POST",body:JSON.stringify({type:"validate",driverId:validatedDriverId})})
+    const json = await res.json()
+    if(!json.valid || !json.active){
+      idStatus.style.color="#ff3b30"
+      idStatus.innerText="⛔ Account suspended. Contact your manager."
+      lockApp(); return
+    }
+  } catch(err){
+    startBtn.disabled=false; startBtn.textContent="Start Trip"
+    alert("⚠ Could not verify with server. Check your connection before starting a trip.")
+    return
+  }
+
   notifyOwner(validatedDriverId,validatedDriverName,"Started Trip")
   running=true; startCoord=null; endCoord=null; distanceAccumulator=0; timeAccumulator=0
   accumulatedFare=activeTariff.base; tripStartTime=new Date().toISOString()
   keepScreenAwake()
-  startBtn.textContent="Stop Trip"; startBtn.className="stop"; resetBtn.disabled=true
+  startBtn.textContent="Stop Trip"; startBtn.className="stop"; startBtn.disabled=false; resetBtn.disabled=true
   speakFare("Trip started")
   timer=setInterval(()=>{ elapsed++; updateTariff(); processTick(0); saveTripState(); update() },1000)
   watch=navigator.geolocation.watchPosition(p=>{
@@ -328,7 +344,8 @@ function getDistance(a,b,c,d){
 
 function saveTrip(total){
   let trips=JSON.parse(localStorage.trips||"[]")
-  trips.unshift({fare:Number(total),miles:toMiles(distance),time:formatTime(elapsed),date:localTimestamp(),tariff:currentTariff,start:startCoord,end:endCoord,driverId:validatedDriverId,driverName:validatedDriverName,synced:false})
+  const tripId=crypto.randomUUID()
+  trips.unshift({tripId,fare:Number(total),miles:toMiles(distance),time:formatTime(elapsed),date:localTimestamp(),tariff:currentTariff,start:startCoord,end:endCoord,driverId:validatedDriverId,driverName:validatedDriverName,synced:false})
   localStorage.trips=JSON.stringify(trips); renderHistory(); updateDashboard()
 }
 
@@ -349,7 +366,8 @@ function exportTrips(){
   trips.forEach(t=>{
     let dist=t.miles||(t.km?(t.km*0.621371).toFixed(2):"0.00")
     let s=t.start?t.start.lat+" "+t.start.lng:"N/A", e=t.end?t.end.lat+" "+t.end.lng:"N/A"
-    csv+=`${t.driverId||""},${t.driverName||""},${t.date.split(", ")[0]||""},${t.date.split(", ")[1]||""},${t.time},${t.fare},${t.tariff||"Day"},${s},${e},${t.tripId||""}\n`
+    let datePart=t.date.split(", ")[0]||"", timePart=t.date.split(", ")[1]||""
+csv+=`${t.driverId||""},${t.driverName||""},${datePart},${timePart},${t.time},${t.fare},${t.tariff||"Day"},${s},${e},${t.tripId||""}\n`
   })
   let b=new Blob([csv],{type:"text/csv"}),l=document.createElement("a"); l.href=URL.createObjectURL(b); l.download="taxi_trips.csv"; l.click()
 }
@@ -376,8 +394,13 @@ async function syncToSheet(){
     let res=await fetch(SYNC_URL,{method:"POST",body:JSON.stringify({type:"sync",driverId:validatedDriverId,driverName:validatedDriverName,trips:unsynced})})
     let json=await res.json()
     if(json.status==="ok"){
-      trips=trips.map(t=>({...t,synced:true})); localStorage.trips=JSON.stringify(trips); renderHistory()
-      syncStatus.style.color="#34c759"; syncStatus.innerText="✓ Synced "+json.inserted+" trip(s) at "+localTimestamp()
+      const syncedIds=new Set(unsynced.map(t=>t.tripId))
+      trips=trips.map(t=>syncedIds.has(t.tripId)?{...t,synced:true}:t)
+      localStorage.trips=JSON.stringify(trips); renderHistory()
+      let msg="✓ Synced "+json.inserted+" trip(s) at "+localTimestamp()
+      if(json.skipped>0) msg+=" ("+json.skipped+" duplicate(s) skipped)"
+      if(json.errors&&json.errors.length) msg+=" | Errors: "+json.errors.join("; ")
+      syncStatus.style.color="#34c759"; syncStatus.innerText=msg
     } else throw json.message||"Unknown error"
   }catch(err){ syncStatus.style.color="#ff3b30"; syncStatus.innerText="✗ Sync failed: "+err }
   syncBtn.disabled=false
