@@ -268,13 +268,30 @@ function processTick(deltaDistance){
   }
 }
 
-function startTrip(){
+async function startTrip(){
   if(!validatedDriverId){ alert("Please verify your Driver ID before starting a trip."); driverInput.focus(); return }
+
+  // Re-validate against the server every time a trip starts
+  startBtn.disabled=true; startBtn.textContent="Checking..."
+  try{
+    const res  = await fetch(SYNC_URL,{method:"POST",body:JSON.stringify({type:"validate",driverId:validatedDriverId})})
+    const json = await res.json()
+    if(!json.valid || !json.active){
+      idStatus.style.color="#ff3b30"
+      idStatus.innerText="⛔ Account suspended. Contact your manager."
+      lockApp(); return
+    }
+  } catch(err){
+    startBtn.disabled=false; startBtn.textContent="Start Trip"
+    alert("⚠ Could not verify with server. Check your connection before starting a trip.")
+    return
+  }
+
   notifyOwner(validatedDriverId,validatedDriverName,"Started Trip")
   running=true; startCoord=null; endCoord=null; distanceAccumulator=0; timeAccumulator=0
   accumulatedFare=activeTariff.base; tripStartTime=new Date().toISOString()
   keepScreenAwake()
-  startBtn.textContent="Stop Trip"; startBtn.className="stop"; resetBtn.disabled=true
+  startBtn.textContent="Stop Trip"; startBtn.className="stop"; startBtn.disabled=false; resetBtn.disabled=true
   speakFare("Trip started")
   timer=setInterval(()=>{ elapsed++; updateTariff(); processTick(0); saveTripState(); update() },1000)
   watch=navigator.geolocation.watchPosition(p=>{
