@@ -345,11 +345,11 @@ function renderHistory(){
 function exportTrips(){
   let trips=JSON.parse(localStorage.trips||"[]")
   if(!trips.length){ alert("No trips"); return }
-  let csv="Driver ID,Driver Name,Date,Distance (mi),Time,Fare,Tariff,Start,End\n"
+  let csv="Driver ID,Driver Name,Date,Time,Duration,Fare (£),Tariff,Start Coords,End Coords,Trip ID\n"
   trips.forEach(t=>{
     let dist=t.miles||(t.km?(t.km*0.621371).toFixed(2):"0.00")
     let s=t.start?t.start.lat+" "+t.start.lng:"N/A", e=t.end?t.end.lat+" "+t.end.lng:"N/A"
-    csv+=`${t.driverId||""},${t.driverName||""},"${t.date}",${dist},${t.time},${t.fare},${t.tariff||"Day"},${s},${e}\n`
+    csv+=`${t.driverId||""},${t.driverName||""},${t.date.split(", ")[0]||""},${t.date.split(", ")[1]||""},${t.time},${t.fare},${t.tariff||"Day"},${s},${e},${t.tripId||""}\n`
   })
   let b=new Blob([csv],{type:"text/csv"}),l=document.createElement("a"); l.href=URL.createObjectURL(b); l.download="taxi_trips.csv"; l.click()
 }
