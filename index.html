@@ -345,7 +345,8 @@ function getDistance(a,b,c,d){
 
 function saveTrip(total){
   let trips=JSON.parse(localStorage.trips||"[]")
-  trips.unshift({fare:Number(total),miles:toMiles(distance),time:formatTime(elapsed),date:localTimestamp(),tariff:currentTariff,start:startCoord,end:endCoord,driverId:validatedDriverId,driverName:validatedDriverName,synced:false})
+  const tripId=crypto.randomUUID()
+  trips.unshift({tripId,fare:Number(total),miles:toMiles(distance),time:formatTime(elapsed),date:localTimestamp(),tariff:currentTariff,start:startCoord,end:endCoord,driverId:validatedDriverId,driverName:validatedDriverName,synced:false})
   localStorage.trips=JSON.stringify(trips); renderHistory(); updateDashboard()
 }
 
@@ -362,12 +363,12 @@ function renderHistory(){
 function exportTrips(){
   let trips=JSON.parse(localStorage.trips||"[]")
   if(!trips.length){ alert("No trips"); return }
-  let csv="Driver ID,Driver Name,Date,Distance (mi),Time,Fare,Tariff,Start,End\n"
-  trips.forEach(t=>{
-    let dist=t.miles||(t.km?(t.km*0.621371).toFixed(2):"0.00")
-    let s=t.start?t.start.lat+" "+t.start.lng:"N/A", e=t.end?t.end.lat+" "+t.end.lng:"N/A"
-    csv+=`${t.driverId||""},${t.driverName||""},${t.date},${dist},${t.time},${t.fare},${t.tariff||"Day"},${s},${e}\n`
-  })
+  let csv="Driver ID,Driver Name,Date,Distance (mi),Time,Fare (£),Tariff,Start Coords,End Coords,Trip ID\n"
+trips.forEach(t=>{
+  let dist=t.miles||(t.km?(t.km*0.621371).toFixed(2):"0.00")
+  let s=t.start?t.start.lat+" "+t.start.lng:"N/A", e=t.end?t.end.lat+" "+t.end.lng:"N/A"
+  csv+=`${t.driverId||""},${t.driverName||""},${t.date},${dist},${t.time},${t.fare},${t.tariff||"Day"},${s},${e},${t.tripId||""}\n`
+})
   let b=new Blob([csv],{type:"text/csv"}),l=document.createElement("a"); l.href=URL.createObjectURL(b); l.download="taxi_trips.csv"; l.click()
 }
 
