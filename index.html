@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -25,6 +26,12 @@ button{width:100%;padding:16px;font-size:20px;border:none;border-radius:12px;mar
 .history{border-bottom:1px solid #333;padding:6px 0}
 #driverInput{width:100%;padding:12px;font-size:18px;border-radius:10px;border:none;background:#2c2c2e;color:white;box-sizing:border-box;margin-bottom:6px;text-align:center;}
 #syncStatus{font-size:14px;color:#999;margin-top:8px;text-align:center;min-height:20px;}
+/* Only new additions below — ID gate extras */
+#verifyBtn{background:#0a84ff;color:white;margin-top:6px}
+#verifyBtn:disabled{background:#222;color:#555;cursor:not-allowed}
+#driverNameDisplay{display:none;margin-top:6px;padding:10px;background:#2c2c2e;border-radius:10px;font-size:16px;color:#34c759;text-align:center;border-left:3px solid #34c759}
+#idStatus{font-size:14px;color:#999;margin-top:6px;text-align:center;min-height:18px}
+.start:disabled{background:#222;color:#555;cursor:not-allowed}
 </style>
 </head>
 <body>
@@ -32,8 +39,11 @@ button{width:100%;padding:16px;font-size:20px;border:none;border-radius:12px;mar
 <h1>Taxi Meter</h1>
 
 <div class="card">
-  <label style="font-size:15px;color:#999">Driver Name</label><br>
-  <input id="driverInput" type="text" placeholder="Enter your name" oninput="saveDriverName()">
+  <label style="font-size:15px;color:#999">Driver ID</label><br>
+  <input id="driverInput" type="text" placeholder="Enter your Driver ID" oninput="onIdInput()" onkeydown="if(event.key==='Enter')validateId()" maxlength="8">
+  <button id="verifyBtn" onclick="validateId()">Verify ID</button>
+  <div id="driverNameDisplay"></div>
+  <div id="idStatus"></div>
 </div>
 
 <div id="tariff">Day</div>
@@ -49,8 +59,8 @@ button{width:100%;padding:16px;font-size:20px;border:none;border-radius:12px;mar
 </div>
 
 <div class="card">
-  <button id="startBtn" class="start">Start Trip</button>
-  <button id="resetBtn" class="reset">Reset</button>
+  <button id="startBtn" class="start" disabled>Verify ID First</button>
+  <button id="resetBtn" class="reset" disabled>Reset</button>
   <div id="gps">GPS idle</div>
 </div>
 
@@ -77,220 +87,138 @@ button{width:100%;padding:16px;font-size:20px;border:none;border-radius:12px;mar
 </div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
 <script>
-// ============================================================
 const SYNC_URL = "https://script.google.com/macros/s/AKfycbyjTEGhB3MfOvLdyyPwbIlAWsOCzAxYQkhgkveTriZLxTZ9--xGHJgngqn4gm_p_HUB/exec"
-// ============================================================
 
-let running = false
-let watch
-let timer
-let wakeLock = null
+let running = false, watch, timer, wakeLock = null
+let distance = 0, elapsed = 0, lastPos = null, speed = 0
+let accumulatedFare = 0, currentTariff = "Day", tripStartTime = null
+let startCoord = null, endCoord = null
+let validatedDriverId = null, validatedDriverName = null
 
-let distance = 0
-let elapsed  = 0
-let lastPos  = null
-let speed    = 0
-let accumulatedFare = 0
-let currentTariff   = "Day"
-let tripStartTime   = null
-
-let startCoord = null
-let endCoord   = null
-
-// --------------------
-// TICK-BASED METER — Liverpool City Council 2025
-// --------------------
 const TARIFFS = {
-  Day: {
-    base: 3.40, tickValue: 0.20, distStep1: 150.9,
-    distStep2: 274.3, distThreshold: 41148, timeStep: 60, speedThreshold: 10
-  },
-  Night: {
-    base: 3.75, tickValue: 0.25, distStep1: 187.5,
-    distStep2: 274.3, distThreshold: 41148, timeStep: 60, speedThreshold: 10
-  },
-  Extra: {
-    base: 4.50, tickValue: 0.30, distStep1: 187.5,
-    distStep2: 274.3, distThreshold: 41148, timeStep: 60, speedThreshold: 10
-  }
+  Day:   {base:3.40,tickValue:0.20,distStep1:150.9,distStep2:274.3,distThreshold:41148,timeStep:60,speedThreshold:10},
+  Night: {base:3.75,tickValue:0.25,distStep1:187.5,distStep2:274.3,distThreshold:41148,timeStep:60,speedThreshold:10},
+  Extra: {base:4.50,tickValue:0.30,distStep1:187.5,distStep2:274.3,distThreshold:41148,timeStep:60,speedThreshold:10}
 }
+let distanceAccumulator = 0, timeAccumulator = 0, activeTariff = TARIFFS.Day
 
-let distanceAccumulator = 0
-let timeAccumulator     = 0
-let activeTariff        = TARIFFS.Day
+const distanceEl       = document.getElementById("distance")
+const timeEl           = document.getElementById("time")
+const fareEl           = document.getElementById("fare")
+const startBtn         = document.getElementById("startBtn")
+const resetBtn         = document.getElementById("resetBtn")
+const gps              = document.getElementById("gps")
+const historyDiv       = document.getElementById("history")
+const todayEarnElem    = document.getElementById("todayEarn")
+const weekEarnElem     = document.getElementById("weekEarn")
+const monthEarnElem    = document.getElementById("monthEarn")
+const lifeEarnElem     = document.getElementById("lifeEarn")
+const avgFareElem      = document.getElementById("avgFare")
+const tariffElem       = document.getElementById("tariff")
+const syncBtn          = document.getElementById("syncBtn")
+const syncStatus       = document.getElementById("syncStatus")
+const driverInput      = document.getElementById("driverInput")
+const verifyBtn        = document.getElementById("verifyBtn")
+const driverNameDisplay = document.getElementById("driverNameDisplay")
+const idStatus         = document.getElementById("idStatus")
 
-// --------------------
-// DOM REFERENCES
-// --------------------
-const distanceEl    = document.getElementById("distance")
-const timeEl        = document.getElementById("time")
-const fareEl        = document.getElementById("fare")
-const startBtn      = document.getElementById("startBtn")
-const resetBtn      = document.getElementById("resetBtn")
-const gps           = document.getElementById("gps")
-const historyDiv    = document.getElementById("history")
-const todayEarnElem = document.getElementById("todayEarn")
-const weekEarnElem  = document.getElementById("weekEarn")
-const monthEarnElem = document.getElementById("monthEarn")
-const lifeEarnElem  = document.getElementById("lifeEarn")
-const avgFareElem   = document.getElementById("avgFare")
-const tariffElem    = document.getElementById("tariff")
-const syncBtn       = document.getElementById("syncBtn")
-const syncStatus    = document.getElementById("syncStatus")
-const driverInput   = document.getElementById("driverInput")
-
-// --------------------
-// MAP
-// --------------------
 let map = L.map("map").setView([0,0],13)
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map)
-let polyline = L.polyline([], {color:"lime"}).addTo(map)
+let polyline = L.polyline([],{color:"lime"}).addTo(map)
 let route = []
 
-// --------------------
-// DRIVER NAME
-// --------------------
-function saveDriverName(){
-  localStorage.driverName = driverInput.value.trim()
-}
-function loadDriverName(){
-  driverInput.value = localStorage.driverName || ""
-}
-
-// --------------------
-// HELPERS
-// --------------------
-function formatTime(sec){
-  let h = Math.floor(sec/3600)
-  let m = Math.floor((sec%3600)/60)
-  let s = sec%60
-  return String(h).padStart(2,"0")+":"+
-         String(m).padStart(2,"0")+":"+
-         String(s).padStart(2,"0")
+function onIdInput(){
+  let raw = driverInput.value.toUpperCase().replace(/[^A-Z0-9]/g,"")
+  if(raw.length > 2) raw = raw.slice(0,2)+"-"+raw.slice(2,7)
+  driverInput.value = raw
+  validatedDriverId = null; validatedDriverName = null
+  driverNameDisplay.style.display = "none"
+  idStatus.innerText = ""
+  startBtn.disabled = true
+  startBtn.textContent = "Verify ID First"
 }
 
-function toMiles(metres){
-  return (metres / 1609.34).toFixed(2)
-}
-
-// BST-aware local timestamp
-function localTimestamp(){
-  const now = new Date()
-  return now.toLocaleString("en-GB", {
-    day:"2-digit", month:"2-digit", year:"numeric",
-    hour:"2-digit", minute:"2-digit", second:"2-digit",
-    hour12: false
-  })
-}
-
-function update(){
-  distanceEl.innerText = toMiles(distance) + " mi"
-  timeEl.innerText     = formatTime(elapsed)
-  fareEl.innerText     = "£" + accumulatedFare.toFixed(2)
-}
-
-function speakFare(msg){
-  let speech = new SpeechSynthesisUtterance(msg)
-  speechSynthesis.speak(speech)
-}
-
-// --------------------
-// WAKE LOCK
-// --------------------
-async function keepScreenAwake(){
+async function validateId(){
+  const id = driverInput.value.trim().toUpperCase()
+  if(id.length < 7){ idStatus.style.color="#ff3b30"; idStatus.innerText="Enter a valid ID (e.g. TX-A7K3M)"; return }
+  verifyBtn.disabled = true; idStatus.style.color="#999"; idStatus.innerText="Verifying..."
   try{
-    if("wakeLock" in navigator){
-      wakeLock = await navigator.wakeLock.request("screen")
+    const res  = await fetch(SYNC_URL,{method:"POST",body:JSON.stringify({type:"validate",driverId:id})})
+    const json = await res.json()
+    if(json.valid && json.active){
+      validatedDriverId=id; validatedDriverName=json.name
+      driverNameDisplay.style.display="block"; driverNameDisplay.innerText="✓ "+json.name
+      idStatus.style.color="#34c759"; idStatus.innerText="ID verified"
+      startBtn.disabled=false; startBtn.textContent="Start Trip"
+      localStorage.lastDriverId=id
+    } else if(json.valid && !json.active){
+      idStatus.style.color="#ff3b30"; idStatus.innerText="⛔ Account suspended. Contact your manager."; lockApp()
+    } else {
+      idStatus.style.color="#ff3b30"; idStatus.innerText="✗ ID not recognised"; lockApp()
     }
-  }catch(e){}
+  }catch(err){ idStatus.style.color="#ff9f0a"; idStatus.innerText="⚠ Could not reach server. Check connection." }
+  verifyBtn.disabled = false
 }
 
-// --------------------
-// TRIP STATE PERSISTENCE
-// Saves every second so switching apps doesn't lose the trip
-// --------------------
+function lockApp(){
+  validatedDriverId=null; validatedDriverName=null
+  startBtn.disabled=true; startBtn.textContent="Verify ID First"
+  driverNameDisplay.style.display="none"
+}
+
+function formatTime(sec){
+  let h=Math.floor(sec/3600),m=Math.floor((sec%3600)/60),s=sec%60
+  return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0")+":"+String(s).padStart(2,"0")
+}
+function toMiles(metres){ return (metres/1609.34).toFixed(2) }
+function localTimestamp(){
+  return new Date().toLocaleString("en-GB",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false})
+}
+function update(){ distanceEl.innerText=toMiles(distance)+" mi"; timeEl.innerText=formatTime(elapsed); fareEl.innerText="£"+accumulatedFare.toFixed(2) }
+function speakFare(msg){ speechSynthesis.speak(new SpeechSynthesisUtterance(msg)) }
+
+async function keepScreenAwake(){
+  try{ if("wakeLock" in navigator) wakeLock=await navigator.wakeLock.request("screen") }catch(e){}
+}
+
 function saveTripState(){
   if(!running) return
-  localStorage.activeTripState = JSON.stringify({
-    running,
-    distance,
-    elapsed,
-    accumulatedFare,
-    currentTariff,
-    startCoord,
-    distanceAccumulator,
-    timeAccumulator,
-    tripStartTime,
-    savedAt: Date.now()
-  })
+  localStorage.activeTripState=JSON.stringify({running,distance,elapsed,accumulatedFare,currentTariff,startCoord,distanceAccumulator,timeAccumulator,tripStartTime,validatedDriverId,validatedDriverName,savedAt:Date.now()})
 }
 
 function restoreTripState(){
-  const saved = localStorage.activeTripState
+  const saved=localStorage.activeTripState
   if(!saved) return false
   try{
-    const s = JSON.parse(saved)
+    const s=JSON.parse(saved)
     if(!s.running) return false
-
-    // Calculate time passed while app was away
-    const secondsAway = Math.floor((Date.now() - s.savedAt) / 1000)
-
-    distance            = s.distance || 0
-    accumulatedFare     = s.accumulatedFare || 0
-    currentTariff       = s.currentTariff || "Day"
-    startCoord          = s.startCoord || null
-    distanceAccumulator = s.distanceAccumulator || 0
-    timeAccumulator     = s.timeAccumulator || 0
-    tripStartTime       = s.tripStartTime || null
-    activeTariff        = TARIFFS[currentTariff] || TARIFFS.Day
-
-    // Add elapsed time including time away
-    elapsed = (s.elapsed || 0) + secondsAway
-
-    // Charge waiting time for seconds away (assume stationary while away)
-    let awayFareSeconds = secondsAway
-    while(awayFareSeconds >= activeTariff.timeStep){
-      accumulatedFare  += activeTariff.tickValue
-      accumulatedFare   = Math.round(accumulatedFare * 100) / 100
-      awayFareSeconds  -= activeTariff.timeStep
-    }
-    timeAccumulator = awayFareSeconds
-
+    const secondsAway=Math.floor((Date.now()-s.savedAt)/1000)
+    distance=s.distance||0; accumulatedFare=s.accumulatedFare||0; currentTariff=s.currentTariff||"Day"
+    startCoord=s.startCoord||null; distanceAccumulator=s.distanceAccumulator||0; timeAccumulator=s.timeAccumulator||0
+    tripStartTime=s.tripStartTime||null; validatedDriverId=s.validatedDriverId||null; validatedDriverName=s.validatedDriverName||null
+    activeTariff=TARIFFS[currentTariff]||TARIFFS.Day; elapsed=(s.elapsed||0)+secondsAway
+    let awayFareSec=secondsAway
+    while(awayFareSec>=activeTariff.timeStep){ accumulatedFare=Math.round((accumulatedFare+activeTariff.tickValue)*100)/100; awayFareSec-=activeTariff.timeStep }
+    timeAccumulator=awayFareSec
     return true
-  }catch(e){
-    return false
-  }
+  }catch(e){ return false }
 }
+function clearTripState(){ localStorage.removeItem("activeTripState") }
 
-function clearTripState(){
-  localStorage.removeItem("activeTripState")
-}
-
-// --------------------
-// VISIBILITY — resume when switching back
-// --------------------
-document.addEventListener("visibilitychange", async ()=>{
-  if(document.visibilityState === "visible"){
-    if(wakeLock !== null) keepScreenAwake()
+document.addEventListener("visibilitychange",async()=>{
+  if(document.visibilityState==="visible"){
+    if(wakeLock!==null) keepScreenAwake()
     if(running){
-      // Catch up time missed while away
-      const saved = localStorage.activeTripState
+      const saved=localStorage.activeTripState
       if(saved){
         try{
-          const s = JSON.parse(saved)
-          const secondsAway = Math.floor((Date.now() - s.savedAt) / 1000)
-          if(secondsAway > 0){
-            elapsed += secondsAway
-            let awayFareSeconds = secondsAway
-            while(awayFareSeconds >= activeTariff.timeStep){
-              accumulatedFare  += activeTariff.tickValue
-              accumulatedFare   = Math.round(accumulatedFare * 100) / 100
-              awayFareSeconds  -= activeTariff.timeStep
-            }
-            timeAccumulator = awayFareSeconds
-            saveTripState()
-            update()
+          const s=JSON.parse(saved), secondsAway=Math.floor((Date.now()-s.savedAt)/1000)
+          if(secondsAway>0){
+            elapsed+=secondsAway; let awayFareSec=secondsAway
+            while(awayFareSec>=activeTariff.timeStep){ accumulatedFare=Math.round((accumulatedFare+activeTariff.tickValue)*100)/100; awayFareSec-=activeTariff.timeStep }
+            timeAccumulator=awayFareSec; saveTripState(); update()
           }
         }catch(e){}
       }
@@ -298,484 +226,196 @@ document.addEventListener("visibilitychange", async ()=>{
   }
 })
 
-// --------------------
-// BANK HOLIDAY & TARIFF HELPERS
-// --------------------
 function getEaster(y){
   const a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4
   const f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3)
   const h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4
   const l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451)
-  return new Date(y, Math.floor((h+l-7*m+114)/31)-1, ((h+l-7*m+114)%31)+1)
+  return new Date(y,Math.floor((h+l-7*m+114)/31)-1,((h+l-7*m+114)%31)+1)
 }
-
-function sameDay(a,b){
-  return a.getFullYear()===b.getFullYear() &&
-         a.getMonth()===b.getMonth() &&
-         a.getDate()===b.getDate()
-}
-
-function firstMonday(y,m){
-  let d=new Date(y,m,1)
-  while(d.getDay()!==1) d.setDate(d.getDate()+1)
-  return d
-}
-
-function lastMonday(y,m){
-  let d=new Date(y,m+1,0)
-  while(d.getDay()!==1) d.setDate(d.getDate()-1)
-  return d
-}
-
-function substituted(y,m,day){
-  let d=new Date(y,m,day)
-  if(d.getDay()===0)      d.setDate(d.getDate()+1)
-  else if(d.getDay()===6) d.setDate(d.getDate()+2)
-  return d
-}
-
+function sameDay(a,b){ return a.getFullYear()===b.getFullYear()&&a.getMonth()===b.getMonth()&&a.getDate()===b.getDate() }
+function firstMonday(y,m){ let d=new Date(y,m,1); while(d.getDay()!==1)d.setDate(d.getDate()+1); return d }
+function lastMonday(y,m){ let d=new Date(y,m+1,0); while(d.getDay()!==1)d.setDate(d.getDate()-1); return d }
+function substituted(y,m,day){ let d=new Date(y,m,day); if(d.getDay()===0)d.setDate(d.getDate()+1); else if(d.getDay()===6)d.setDate(d.getDate()+2); return d }
 function isUKBankHoliday(now){
-  const y      = now.getFullYear()
-  const easter = getEaster(y)
-  const goodFriday   = new Date(easter); goodFriday.setDate(easter.getDate()-2)
-  const easterMonday = new Date(easter); easterMonday.setDate(easter.getDate()+1)
-  const bankHolidays = [
-    substituted(y,0,1),
-    goodFriday,
-    easterMonday,
-    firstMonday(y,4),
-    lastMonday(y,4),
-    lastMonday(y,7),
-    substituted(y,11,25),
-    substituted(y,11,26)
-  ]
-  return bankHolidays.some(bh => sameDay(now, bh))
+  const y=now.getFullYear(),easter=getEaster(y)
+  const gf=new Date(easter); gf.setDate(easter.getDate()-2)
+  const em=new Date(easter); em.setDate(easter.getDate()+1)
+  return [substituted(y,0,1),gf,em,firstMonday(y,4),lastMonday(y,4),lastMonday(y,7),substituted(y,11,25),substituted(y,11,26)].some(bh=>sameDay(now,bh))
 }
-
 function isExtraRate(now){
-  const y = now.getFullYear()
-  const ranges = [
-    [new Date(y,11,24,18,0,0), new Date(y,11,27,6,0,0)],
-    [new Date(y,11,31,18,0,0), new Date(y+1,0,2,6,0,0)],
-    [new Date(y-1,11,31,18,0,0), new Date(y,0,2,6,0,0)]
-  ]
-  return ranges.some(([start,end]) => now >= start && now < end)
+  const y=now.getFullYear()
+  return [[new Date(y,11,24,18),new Date(y,11,27,6)],[new Date(y,11,31,18),new Date(y+1,0,2,6)],[new Date(y-1,11,31,18),new Date(y,0,2,6)]].some(([s,e])=>now>=s&&now<e)
 }
-
-// --------------------
-// TARIFF — runs every second during trip
-// --------------------
 function updateTariff(){
-  const now  = new Date()
-  const hour = now.getHours()
-
-  if(isExtraRate(now)){
-    activeTariff                = TARIFFS.Extra
-    currentTariff               = "Extra"
-    tariffElem.innerText        = "Extra"
-    tariffElem.style.background = "#4a1a1a"
-    tariffElem.style.color      = "#ff6b6b"
-  } else if(isUKBankHoliday(now) || hour < 6 || hour >= 21){
-    activeTariff                = TARIFFS.Night
-    currentTariff               = "Night"
-    tariffElem.innerText        = "Night"
-    tariffElem.style.background = "#2c1f4a"
-    tariffElem.style.color      = "#bf9fff"
-  } else {
-    activeTariff                = TARIFFS.Day
-    currentTariff               = "Day"
-    tariffElem.innerText        = "Day"
-    tariffElem.style.background = "#333"
-    tariffElem.style.color      = "#fff"
-  }
+  const now=new Date(),hour=now.getHours()
+  if(isExtraRate(now)){ activeTariff=TARIFFS.Extra;currentTariff="Extra";tariffElem.innerText="Extra";tariffElem.style.background="#4a1a1a";tariffElem.style.color="#ff6b6b" }
+  else if(isUKBankHoliday(now)||hour<6||hour>=21){ activeTariff=TARIFFS.Night;currentTariff="Night";tariffElem.innerText="Night";tariffElem.style.background="#2c1f4a";tariffElem.style.color="#bf9fff" }
+  else { activeTariff=TARIFFS.Day;currentTariff="Day";tariffElem.innerText="Day";tariffElem.style.background="#333";tariffElem.style.color="#fff" }
 }
 updateTariff()
 
-// --------------------
-// TICK METER LOGIC
-// --------------------
 function processTick(deltaDistance){
-  if(speed > activeTariff.speedThreshold){
-    distanceAccumulator += deltaDistance
-    let step = distance < activeTariff.distThreshold
-      ? activeTariff.distStep1
-      : activeTariff.distStep2
-    if(distanceAccumulator >= step){
-      accumulatedFare     += activeTariff.tickValue
-      accumulatedFare      = Math.round(accumulatedFare * 100) / 100
-      distanceAccumulator  = 0
-    }
-    timeAccumulator = 0
+  if(speed>activeTariff.speedThreshold){
+    distanceAccumulator+=deltaDistance
+    let step=distance<activeTariff.distThreshold?activeTariff.distStep1:activeTariff.distStep2
+    if(distanceAccumulator>=step){ accumulatedFare=Math.round((accumulatedFare+activeTariff.tickValue)*100)/100; distanceAccumulator=0 }
+    timeAccumulator=0
   } else {
     timeAccumulator++
-    if(timeAccumulator >= activeTariff.timeStep){
-      accumulatedFare  += activeTariff.tickValue
-      accumulatedFare   = Math.round(accumulatedFare * 100) / 100
-      timeAccumulator   = 0
-    }
-    distanceAccumulator = 0
+    if(timeAccumulator>=activeTariff.timeStep){ accumulatedFare=Math.round((accumulatedFare+activeTariff.tickValue)*100)/100; timeAccumulator=0 }
+    distanceAccumulator=0
   }
 }
 
-// --------------------
-// TRIP FUNCTIONS
-// --------------------
 function startTrip(){
-  if(!driverInput.value.trim()){
-    alert("Please enter your driver name before starting a trip.")
-    driverInput.focus()
-    return
-  }
-
-  notifyOwner(driverInput.value.trim(), "Started Trip")
-  running             = true
-  startCoord          = null
-  endCoord            = null
-  distanceAccumulator = 0
-  timeAccumulator     = 0
-  accumulatedFare     = activeTariff.base
-  tripStartTime       = new Date().toISOString()
-
+  if(!validatedDriverId){ alert("Please verify your Driver ID before starting a trip."); driverInput.focus(); return }
+  notifyOwner(validatedDriverId,validatedDriverName,"Started Trip")
+  running=true; startCoord=null; endCoord=null; distanceAccumulator=0; timeAccumulator=0
+  accumulatedFare=activeTariff.base; tripStartTime=new Date().toISOString()
   keepScreenAwake()
-  startBtn.textContent = "Stop Trip"
-  startBtn.className   = "stop"
-  resetBtn.disabled    = true
-
+  startBtn.textContent="Stop Trip"; startBtn.className="stop"; resetBtn.disabled=true
   speakFare("Trip started")
-
-  timer = setInterval(()=>{
-    elapsed++
-    updateTariff()
-    processTick(0)
-    saveTripState()
-    update()
-  }, 1000)
-
-  watch = navigator.geolocation.watchPosition(
-    p=>{
-      let lat = p.coords.latitude
-      let lng = p.coords.longitude
-      speed   = p.coords.speed ? p.coords.speed * 3.6 : 0
-      gps.innerText = "GPS active"
-
-      if(!startCoord){ startCoord = {lat, lng} }
-
-      if(lastPos){
-        let delta = getDistance(lastPos.lat, lastPos.lng, lat, lng)
-        distance += delta
-        processTick(delta)
-      }
-
-      lastPos = {lat, lng}
-      route.push([lat, lng])
-      polyline.setLatLngs(route)
-      map.setView([lat, lng], 16)
-      update()
-    },
-    err=>{ gps.innerText = "GPS error" },
-    {enableHighAccuracy: true}
-  )
+  timer=setInterval(()=>{ elapsed++; updateTariff(); processTick(0); saveTripState(); update() },1000)
+  watch=navigator.geolocation.watchPosition(p=>{
+    let lat=p.coords.latitude,lng=p.coords.longitude
+    speed=p.coords.speed?p.coords.speed*3.6:0; gps.innerText="GPS active"
+    if(!startCoord) startCoord={lat,lng}
+    if(lastPos){ let delta=getDistance(lastPos.lat,lastPos.lng,lat,lng); distance+=delta; processTick(delta) }
+    lastPos={lat,lng}; route.push([lat,lng]); polyline.setLatLngs(route); map.setView([lat,lng],16); update()
+  },err=>{ gps.innerText="GPS error" },{enableHighAccuracy:true})
 }
 
 function stopTrip(){
   if(!running) return
-  let miles    = toMiles(distance)
-  let duration = formatTime(elapsed)
-  let totalStr = accumulatedFare.toFixed(2)
-
-  let confirmStop = confirm(
-    "End this trip?\n\n"+
-    "Distance: "+miles+" mi\n"+
-    "Time: "+duration+"\n"+
-    "Fare: £"+totalStr
-  )
-  if(!confirmStop) return
-
-  notifyOwner(driverInput.value.trim(), "Ended Trip")
-  running = false
-  clearInterval(timer)
-  navigator.geolocation.clearWatch(watch)
+  let miles=toMiles(distance),duration=formatTime(elapsed),totalStr=accumulatedFare.toFixed(2)
+  if(!confirm("End this trip?\n\nDistance: "+miles+" mi\nTime: "+duration+"\nFare: £"+totalStr)) return
+  notifyOwner(validatedDriverId,validatedDriverName,"Ended Trip — £"+totalStr)
+  running=false; clearInterval(timer); navigator.geolocation.clearWatch(watch)
   if(wakeLock){ wakeLock.release(); wakeLock=null }
-  clearTripState()
-
-  endCoord             = lastPos
-  startBtn.textContent = "Start Trip"
-  startBtn.className   = "start"
-  resetBtn.disabled    = false
-
+  clearTripState(); endCoord=lastPos
+  startBtn.textContent="Start Trip"; startBtn.className="start"; resetBtn.disabled=false
   speakFare("Trip complete. Total fare is "+totalStr+" pounds")
-
-  saveTrip(totalStr)
-  showReceipt(miles, duration, totalStr)
-  update()
-  resetTrip()
+  saveTrip(totalStr); showReceipt(miles,duration,totalStr); update(); resetTrip()
 }
 
-// --------------------
-// RECEIPT
-// --------------------
-function showReceipt(miles, duration, totalStr){
-  let receipt =
-    "Taxi Receipt\n\n"+
-    "Driver: "+(driverInput.value.trim()||"Unknown")+"\n"+
-    "Distance: "+miles+" mi\n"+
-    "Time: "+duration+"\n"+
-    "Fare: £"+totalStr+"\n"+
-    "Tariff: "+currentTariff+"\n"+
-    "Start: "+(startCoord?`https://maps.google.com/?q=${startCoord.lat},${startCoord.lng}`:"N/A")+"\n"+
-    "End: "+(endCoord?`https://maps.google.com/?q=${endCoord.lat},${endCoord.lng}`:"N/A")+"\n"+
-    "Date: "+localTimestamp()
-  alert(receipt)
-  shareReceipt(receipt)
+function showReceipt(miles,duration,totalStr){
+  let receipt="Taxi Receipt\n\nDriver: "+validatedDriverName+"\nID: "+validatedDriverId+
+    "\nDistance: "+miles+" mi\nTime: "+duration+"\nFare: £"+totalStr+"\nTariff: "+currentTariff+
+    "\nStart: "+(startCoord?"https://maps.google.com/?q="+startCoord.lat+","+startCoord.lng:"N/A")+
+    "\nEnd: "+(endCoord?"https://maps.google.com/?q="+endCoord.lat+","+endCoord.lng:"N/A")+
+    "\nDate: "+localTimestamp()
+  alert(receipt); shareReceipt(receipt)
 }
-
 async function shareReceipt(receipt){
-  try{
-    if(navigator.share){ await navigator.share({title:"Taxi Receipt",text:receipt}); return }
-    throw "noShare"
-  }catch(e){
+  try{ if(navigator.share){await navigator.share({title:"Taxi Receipt",text:receipt});return} throw "noShare" }
+  catch(e){
     try{ await navigator.clipboard.writeText(receipt); alert("Receipt copied to clipboard.") }
-    catch(e2){
-      let blob = new Blob([receipt],{type:"text/plain"})
-      let link = document.createElement("a")
-      link.href = URL.createObjectURL(blob)
-      link.download = "taxi_receipt.txt"
-      link.click()
-    }
+    catch(e2){ let b=new Blob([receipt],{type:"text/plain"}),l=document.createElement("a"); l.href=URL.createObjectURL(b); l.download="taxi_receipt.txt"; l.click() }
   }
 }
 
 function resetTrip(){
-  distance            = 0
-  elapsed             = 0
-  accumulatedFare     = 0
-  lastPos             = null
-  startCoord          = null
-  endCoord            = null
-  distanceAccumulator = 0
-  timeAccumulator     = 0
-  tripStartTime       = null
-  route               = []
-  polyline.setLatLngs([])
-  update()
+  distance=elapsed=accumulatedFare=0; lastPos=startCoord=endCoord=null
+  distanceAccumulator=timeAccumulator=0; tripStartTime=null; route=[]; polyline.setLatLngs([]); update()
 }
 
 function getDistance(a,b,c,d){
-  const R  = 6371000
-  const p1 = a*Math.PI/180
-  const p2 = c*Math.PI/180
-  const dp = (c-a)*Math.PI/180
-  const dl = (d-b)*Math.PI/180
-  const x  = Math.sin(dp/2)**2 + Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2
-  const y  = 2*Math.atan2(Math.sqrt(x), Math.sqrt(1-x))
-  return R*y
+  const R=6371000,p1=a*Math.PI/180,p2=c*Math.PI/180,dp=(c-a)*Math.PI/180,dl=(d-b)*Math.PI/180
+  const x=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x))
 }
 
-// --------------------
-// HISTORY & DASHBOARD
-// --------------------
 function saveTrip(total){
-  let trips = JSON.parse(localStorage.trips||"[]")
-  trips.unshift({
-    fare:   Number(total),
-    miles:  toMiles(distance),
-    time:   formatTime(elapsed),
-    date:   localTimestamp(),
-    tariff: currentTariff,
-    start:  startCoord,
-    end:    endCoord,
-    synced: false
-  })
-  localStorage.trips = JSON.stringify(trips)
-  renderHistory()
-  updateDashboard()
+  let trips=JSON.parse(localStorage.trips||"[]")
+  trips.unshift({fare:Number(total),miles:toMiles(distance),time:formatTime(elapsed),date:localTimestamp(),tariff:currentTariff,start:startCoord,end:endCoord,driverId:validatedDriverId,driverName:validatedDriverName,synced:false})
+  localStorage.trips=JSON.stringify(trips); renderHistory(); updateDashboard()
 }
 
 function renderHistory(){
-  let trips = JSON.parse(localStorage.trips||"[]")
-  let html  = ""
+  let trips=JSON.parse(localStorage.trips||"[]"), html=""
   trips.slice(0,5).forEach(t=>{
-    let dist  = t.miles || (t.km ? (t.km * 0.621371).toFixed(2) : "0.00")
-    let badge = t.synced
-      ? '<span style="color:#34c759;font-size:12px"> ✓ synced</span>'
-      : '<span style="color:#ff9f0a;font-size:12px"> ● unsynced</span>'
-    html += `<div class="history">
-      £${Number(t.fare).toFixed(2)} • ${dist} mi • ${t.time} • ${t.tariff||"Day"}${badge}<br>
-      ${t.date}
-    </div>`
+    let dist=t.miles||(t.km?(t.km*0.621371).toFixed(2):"0.00")
+    let badge=t.synced?'<span style="color:#34c759;font-size:12px"> ✓ synced</span>':'<span style="color:#ff9f0a;font-size:12px"> ● unsynced</span>'
+    html+=`<div class="history">£${Number(t.fare).toFixed(2)} • ${dist} mi • ${t.time} • ${t.tariff||"Day"}${badge}<br>${t.date}</div>`
   })
-  historyDiv.innerHTML = html || "<div style='color:#666'>No trips yet</div>"
+  historyDiv.innerHTML=html||"<div style='color:#666'>No trips yet</div>"
 }
 
 function exportTrips(){
-  let trips = JSON.parse(localStorage.trips||"[]")
-  if(trips.length===0){ alert("No trips"); return }
-  let driver = driverInput.value.trim() || "Unknown"
-  let csv    = "Driver,Date,Distance (mi),Time,Fare,Tariff,Start,End\n"
+  let trips=JSON.parse(localStorage.trips||"[]")
+  if(!trips.length){ alert("No trips"); return }
+  let csv="Driver ID,Driver Name,Date,Distance (mi),Time,Fare,Tariff,Start,End\n"
   trips.forEach(t=>{
-    let dist = t.miles || (t.km ? (t.km * 0.621371).toFixed(2) : "0.00")
-    let s    = t.start ? `${t.start.lat} ${t.start.lng}` : "N/A"
-    let e    = t.end   ? `${t.end.lat} ${t.end.lng}`     : "N/A"
-    csv += `${driver},${t.date},${dist},${t.time},${t.fare},${t.tariff||"Day"},${s},${e}\n`
+    let dist=t.miles||(t.km?(t.km*0.621371).toFixed(2):"0.00")
+    let s=t.start?t.start.lat+" "+t.start.lng:"N/A", e=t.end?t.end.lat+" "+t.end.lng:"N/A"
+    csv+=`${t.driverId||""},${t.driverName||""},${t.date},${dist},${t.time},${t.fare},${t.tariff||"Day"},${s},${e}\n`
   })
-  let blob = new Blob([csv],{type:"text/csv"})
-  let link = document.createElement("a")
-  link.href = URL.createObjectURL(blob)
-  link.download = "taxi_trips.csv"
-  link.click()
+  let b=new Blob([csv],{type:"text/csv"}),l=document.createElement("a"); l.href=URL.createObjectURL(b); l.download="taxi_trips.csv"; l.click()
 }
 
 function updateDashboard(){
-  let trips = JSON.parse(localStorage.trips||"[]")
-  let today = new Date()
-  let todayEarn=0, week=0, month=0, life=0
-
+  let trips=JSON.parse(localStorage.trips||"[]"),today=new Date(),todayEarn=0,week=0,month=0,life=0
   trips.forEach(t=>{
-    let d = new Date(t.date)
-    let f = Number(t.fare)
-    life += f
-    if(d.toDateString() === today.toDateString()) todayEarn += f
-    if((today - d)/(1000*60*60*24) < 7) week += f
-    if(d.getMonth()===today.getMonth() && d.getFullYear()===today.getFullYear()) month += f
+    let d=new Date(t.date),f=Number(t.fare); life+=f
+    if(d.toDateString()===today.toDateString()) todayEarn+=f
+    if((today-d)/(1000*60*60*24)<7) week+=f
+    if(d.getMonth()===today.getMonth()&&d.getFullYear()===today.getFullYear()) month+=f
   })
-
-  let avg = trips.length ? life/trips.length : 0
-  todayEarnElem.innerText = todayEarn.toFixed(2)
-  weekEarnElem.innerText  = week.toFixed(2)
-  monthEarnElem.innerText = month.toFixed(2)
-  lifeEarnElem.innerText  = life.toFixed(2)
-  avgFareElem.innerText   = avg.toFixed(2)
+  let avg=trips.length?life/trips.length:0
+  todayEarnElem.innerText=todayEarn.toFixed(2); weekEarnElem.innerText=week.toFixed(2)
+  monthEarnElem.innerText=month.toFixed(2); lifeEarnElem.innerText=life.toFixed(2); avgFareElem.innerText=avg.toFixed(2)
 }
 
-// --------------------
-// SYNC TO GOOGLE SHEETS
-// --------------------
 async function syncToSheet(){
-  if(SYNC_URL === "PASTE_YOUR_URL_HERE"){
-    alert("Please paste your Google Apps Script URL into the SYNC_URL variable in this file.")
-    return
-  }
-
-  let driver = driverInput.value.trim()
-  if(!driver){
-    alert("Please enter your driver name before syncing.")
-    driverInput.focus()
-    return
-  }
-
-  let trips    = JSON.parse(localStorage.trips||"[]")
-  let unsynced = trips.filter(t => !t.synced)
-
-  if(unsynced.length === 0){
-    syncStatus.innerText   = "✓ All trips already synced."
-    syncStatus.style.color = "#34c759"
-    return
-  }
-
-  syncBtn.disabled       = true
-  syncStatus.style.color = "#999"
-  syncStatus.innerText   = "Syncing "+unsynced.length+" trip(s)..."
-
+  if(!validatedDriverId){ alert("Please verify your Driver ID before syncing."); driverInput.focus(); return }
+  let trips=JSON.parse(localStorage.trips||"[]"), unsynced=trips.filter(t=>!t.synced)
+  if(!unsynced.length){ syncStatus.style.color="#34c759"; syncStatus.innerText="✓ All trips already synced."; return }
+  syncBtn.disabled=true; syncStatus.style.color="#999"; syncStatus.innerText="Syncing "+unsynced.length+" trip(s)..."
   try{
-    let res  = await fetch(SYNC_URL, {
-      method: "POST",
-      body:   JSON.stringify({ driver, trips: unsynced })
-    })
-    let json = await res.json()
-
-    if(json.status === "ok"){
-      trips = trips.map(t => ({...t, synced: true}))
-      localStorage.trips     = JSON.stringify(trips)
-      renderHistory()
-      syncStatus.innerText   = "✓ Synced "+json.inserted+" trip(s) at "+localTimestamp()
-      syncStatus.style.color = "#34c759"
-    } else {
-      throw json.message || "Unknown error"
-    }
-  }catch(err){
-    syncStatus.innerText   = "✗ Sync failed: "+err
-    syncStatus.style.color = "#ff3b30"
-  }
-
-  syncBtn.disabled = false
+    let res=await fetch(SYNC_URL,{method:"POST",body:JSON.stringify({type:"sync",driverId:validatedDriverId,driverName:validatedDriverName,trips:unsynced})})
+    let json=await res.json()
+    if(json.status==="ok"){
+      trips=trips.map(t=>({...t,synced:true})); localStorage.trips=JSON.stringify(trips); renderHistory()
+      syncStatus.style.color="#34c759"; syncStatus.innerText="✓ Synced "+json.inserted+" trip(s) at "+localTimestamp()
+    } else throw json.message||"Unknown error"
+  }catch(err){ syncStatus.style.color="#ff3b30"; syncStatus.innerText="✗ Sync failed: "+err }
+  syncBtn.disabled=false
 }
 
-// --------------------
-// LIVE NOTIFY
-// --------------------
-function notifyOwner(driver, action){
-  try{
-    fetch(SYNC_URL, {
-      method: "POST",
-      body: JSON.stringify({
-        type:      "instantLog",
-        driver:    driver,
-        action:    action,
-        timestamp: localTimestamp()
-      })
-    })
-  } catch(err){
-    console.warn("Live log failed:", err)
-  }
+function notifyOwner(driverId,driverName,action){
+  try{ fetch(SYNC_URL,{method:"POST",body:JSON.stringify({type:"instantLog",driverId,driverName,action,timestamp:localTimestamp()})}) }catch(e){}
 }
 
-// --------------------
-// BUTTON EVENTS
-// --------------------
-startBtn.onclick = function(){ running ? stopTrip() : startTrip() }
-resetBtn.onclick = resetTrip
+startBtn.onclick=function(){ running?stopTrip():startTrip() }
+resetBtn.onclick=resetTrip
 
-// --------------------
-// INIT — restore trip if app was interrupted
-// --------------------
-loadDriverName()
 updateTariff()
 
-const wasRunning = restoreTripState()
-if(wasRunning){
-  running = true
-  startBtn.textContent = "Stop Trip"
-  startBtn.className   = "stop"
-  resetBtn.disabled    = true
-  gps.innerText        = "Resuming trip..."
-  keepScreenAwake()
-
-  timer = setInterval(()=>{
-    elapsed++
-    updateTariff()
-    processTick(0)
-    saveTripState()
-    update()
-  }, 1000)
-
-  watch = navigator.geolocation.watchPosition(
-    p=>{
-      let lat = p.coords.latitude
-      let lng = p.coords.longitude
-      speed   = p.coords.speed ? p.coords.speed * 3.6 : 0
-      gps.innerText = "GPS active"
-      if(lastPos){
-        let delta = getDistance(lastPos.lat, lastPos.lng, lat, lng)
-        distance += delta
-        processTick(delta)
-      }
-      lastPos = {lat, lng}
-      route.push([lat, lng])
-      polyline.setLatLngs(route)
-      map.setView([lat, lng], 16)
-      update()
-    },
-    err=>{ gps.innerText = "GPS error" },
-    {enableHighAccuracy: true}
-  )
-} else {
-  accumulatedFare = activeTariff.base
+if(localStorage.lastDriverId){
+  driverInput.value=localStorage.lastDriverId
+  idStatus.style.color="#999"; idStatus.innerText="Press Verify to re-authenticate"
 }
 
-update()
-renderHistory()
-updateDashboard()
+const wasRunning=restoreTripState()
+if(wasRunning&&validatedDriverId){
+  running=true; startBtn.textContent="Stop Trip"; startBtn.className="stop"; startBtn.disabled=false; resetBtn.disabled=true
+  driverInput.value=validatedDriverId; driverNameDisplay.style.display="block"; driverNameDisplay.innerText="✓ "+validatedDriverName
+  idStatus.style.color="#34c759"; idStatus.innerText="Trip in progress"; gps.innerText="Resuming trip..."
+  keepScreenAwake()
+  timer=setInterval(()=>{ elapsed++; updateTariff(); processTick(0); saveTripState(); update() },1000)
+  watch=navigator.geolocation.watchPosition(p=>{
+    let lat=p.coords.latitude,lng=p.coords.longitude
+    speed=p.coords.speed?p.coords.speed*3.6:0; gps.innerText="GPS active"
+    if(lastPos){ let delta=getDistance(lastPos.lat,lastPos.lng,lat,lng); distance+=delta; processTick(delta) }
+    lastPos={lat,lng}; route.push([lat,lng]); polyline.setLatLngs(route); map.setView([lat,lng],16); update()
+  },err=>{ gps.innerText="GPS error" },{enableHighAccuracy:true})
+} else {
+  accumulatedFare=activeTariff.base
+}
 
+update(); renderHistory(); updateDashboard()
 </script>
+
 </body>
 </html>
