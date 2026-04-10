@@ -288,7 +288,7 @@ async function startTrip(){
 
   notifyOwner(validatedDriverId,validatedDriverName,"Started Trip")
   running=true; startCoord=null; endCoord=null; distanceAccumulator=0; timeAccumulator=0
-  accumulatedFare=activeTariff.base; tripStartTime=new Date().toISOString()
+  accumulatedFare=activeTariff.base; tripStartTime = localTimestamp()
   keepScreenAwake()
   startBtn.textContent="Stop Trip"; startBtn.className="stop"; startBtn.disabled=false; resetBtn.disabled=true
   speakFare("Trip started")
