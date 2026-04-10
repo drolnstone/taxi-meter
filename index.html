@@ -270,7 +270,6 @@ function processTick(deltaDistance){
 async function startTrip(){
   if(!validatedDriverId){ alert("Please verify your Driver ID before starting a trip."); driverInput.focus(); return }
 
-  // Re-validate against server every time a trip starts
   startBtn.disabled=true; startBtn.textContent="Checking..."
   try{
     const res  = await fetch(SYNC_URL,{method:"POST",body:JSON.stringify({type:"validate",driverId:validatedDriverId})})
