@@ -88,7 +88,7 @@ button{width:100%;padding:16px;font-size:20px;border:none;border-radius:12px;mar
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
 <script>
-const SYNC_URL = "https://script.google.com/macros/s/AKfycbyRx5KgFLim0HSN9-B5eTgaMvX-5J65Bi4GXLWFkFuizpl1gWIo-dfdZ67SSob7RuBT/exec"
+const SYNC_URL = "https://script.google.com/macros/s/AKfycbwfVdwML13iR7X_RQDB9ntchayc-byxHEWjp__Xcxiy9w0LmaepWt5VwAaYNd4BAppx/exec"
 
 let running = false, watch, timer, wakeLock = null
 let distance = 0, elapsed = 0, lastPos = null, speed = 0
@@ -97,9 +97,10 @@ let startCoord = null, endCoord = null
 let validatedDriverId = null, validatedDriverName = null
 
 const TARIFFS = {
-  Day:   {base:3.40,tickValue:0.20,distStep1:150.9,distStep2:274.3,distThreshold:41148,timeStep:60,speedThreshold:10},
-  Night: {base:3.75,tickValue:0.25,distStep1:187.5,distStep2:274.3,distThreshold:41148,timeStep:60,speedThreshold:10},
-  Extra: {base:4.50,tickValue:0.30,distStep1:187.5,distStep2:274.3,distThreshold:41148,timeStep:60,speedThreshold:10}
+  Day:     {base:3.40,tickValue:0.20,distStep1:150.9,distStep2:274.3,distThreshold:41148,timeStep:60,speedThreshold:10},
+  Night:   {base:3.75,tickValue:0.25,distStep1:187.5,distStep2:274.3,distThreshold:41148,timeStep:60,speedThreshold:10},
+  Holiday: {base:3.75,tickValue:0.25,distStep1:187.5,distStep2:274.3,distThreshold:41148,timeStep:60,speedThreshold:10},
+  Extra:   {base:4.50,tickValue:0.30,distStep1:187.5,distStep2:274.3,distThreshold:41148,timeStep:60,speedThreshold:10}
 }
 let distanceAccumulator = 0, timeAccumulator = 0, activeTariff = TARIFFS.Day
 
@@ -249,7 +250,8 @@ function isExtraRate(now){
 function updateTariff(){
   const now=new Date(),hour=now.getHours()
   if(isExtraRate(now)){ activeTariff=TARIFFS.Extra;currentTariff="Extra";tariffElem.innerText="Extra";tariffElem.style.background="#4a1a1a";tariffElem.style.color="#ff6b6b" }
-  else if(isUKBankHoliday(now)||hour<6||hour>=21){ activeTariff=TARIFFS.Night;currentTariff="Night";tariffElem.innerText="Night";tariffElem.style.background="#2c1f4a";tariffElem.style.color="#bf9fff" }
+  else if(isUKBankHoliday(now)&&(hour>=6&&hour<21)){ activeTariff=TARIFFS.Holiday;currentTariff="Holiday";tariffElem.innerText="Holiday";tariffElem.style.background="#2c1f4a";tariffElem.style.color="#bf9fff" }
+  else if(hour<6||hour>=21){ activeTariff=TARIFFS.Night;currentTariff="Night";tariffElem.innerText="Night";tariffElem.style.background="#2c1f4a";tariffElem.style.color="#bf9fff" }
   else { activeTariff=TARIFFS.Day;currentTariff="Day";tariffElem.innerText="Day";tariffElem.style.background="#333";tariffElem.style.color="#fff" }
 }
 updateTariff()
@@ -287,7 +289,7 @@ async function startTrip(){
 
   notifyOwner(validatedDriverId,validatedDriverName,"Started Trip")
   running=true; startCoord=null; endCoord=null; distanceAccumulator=0; timeAccumulator=0
-  accumulatedFare=activeTariff.base; tripStartTime = localTimestamp()
+  accumulatedFare=activeTariff.base; tripStartTime=localTimestamp()
   keepScreenAwake()
   startBtn.textContent="Stop Trip"; startBtn.className="stop"; startBtn.disabled=false; resetBtn.disabled=true
   speakFare("Trip started")
