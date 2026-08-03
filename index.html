@@ -6,7 +6,8 @@
 <title>Taxi Meter</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 <style>
-body{font-family:-apple-system,Arial;background:#0b0b0b;color:white;margin:0;padding:20px}
+body{font-family:-apple-system,Arial;background:#0b0b0b;color:white;margin:0;
+  padding:calc(20px + env(safe-area-inset-top)) 20px 130px 20px}
 h1{text-align:center;margin-bottom:20px}
 .fareDisplay{text-align:center;margin-bottom:25px}
 .fareLabel{font-size:18px;color:#999}
@@ -47,6 +48,16 @@ button{width:100%;padding:16px;font-size:20px;border:none;border-radius:12px;mar
 #navDist{font-size:28px;font-weight:bold;color:#5ab0ff}
 #navText{font-size:18px;color:#dbe9f7;margin-top:4px}
 #navMeta{font-size:13px;color:#7fa8cc;margin-top:6px}
+/* Start and Stop lives in a fixed bar at thumb height. It is the control that
+   ends the charge, so it must never be somewhere the driver has to scroll for. */
+#actionBar{position:fixed;left:0;right:0;bottom:0;z-index:1000;
+  padding:12px 20px calc(12px + env(safe-area-inset-bottom)) 20px;
+  background:rgba(11,11,11,0.94);border-top:1px solid #2a2a2a;
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+#actionBar button{margin-top:0}
+.collapsedStrip{padding:12px;background:#2c2c2e;border-radius:10px;font-size:16px;
+  text-align:center;cursor:pointer;border-left:3px solid #34c759;color:#34c759}
+.collapsedStrip .sub{display:block;font-size:13px;color:#8a8a8e;margin-top:3px}
 #idleBanner{background:#3a2a0a;border-left:3px solid #ff9f0a;border-radius:12px;padding:16px;margin-bottom:18px}
 #idleText{font-size:17px;color:#ffcf7a;line-height:1.4}
 .warn{background:#3a2a0a;border-left:3px solid #ff9f0a;border-radius:10px;padding:10px;font-size:14px;color:#ffcf7a;margin-top:10px}
@@ -54,20 +65,25 @@ button{width:100%;padding:16px;font-size:20px;border:none;border-radius:12px;mar
 </head>
 <body>
 
-<h1>Taxi Meter</h1>
+<h1 id="pageTitle">Taxi Meter</h1>
 
-<div class="card">
-  <label class="fieldLabel">Driver ID</label>
-  <input id="driverInput" type="text" placeholder="Enter your Driver ID" oninput="onIdInput()" onkeydown="if(event.key==='Enter')validateId()" maxlength="8">
-  <button id="verifyBtn" onclick="validateId()">Verify ID</button>
-  <div id="driverNameDisplay"></div>
+<div class="card" id="driverCard">
+  <div id="driverExpanded">
+    <label class="fieldLabel">Driver ID</label>
+    <input id="driverInput" type="text" placeholder="Enter your Driver ID" oninput="onIdInput()" onkeydown="if(event.key==='Enter')validateId()" maxlength="8">
+    <button id="verifyBtn" onclick="validateId()">Verify ID</button>
+  </div>
+  <div id="driverNameDisplay" onclick="expandDriverCard()"></div>
   <div id="idStatus"></div>
 </div>
 
-<div class="card">
-  <label class="fieldLabel">Destination (postcode or address)</label>
-  <input id="destInput" type="text" placeholder="L4 0TH or 24 Scotland Road" autocomplete="off">
-  <div id="suggestions"></div>
+<div class="card" id="destCard">
+  <div id="destExpanded">
+    <label class="fieldLabel">Destination (postcode or address)</label>
+    <input id="destInput" type="text" placeholder="L4 0TH or 24 Scotland Road" autocomplete="off">
+    <div id="suggestions"></div>
+  </div>
+  <div id="destSummary" class="collapsedStrip" style="display:none;border-left-color:#0a84ff;color:#5ab0ff" onclick="expandDestCard()"></div>
   <div id="destStatus"></div>
   <div id="estimateBox" style="display:none"></div>
   <button id="clearDestBtn" class="reset" onclick="clearDestination()" style="display:none">Clear destination</button>
@@ -97,8 +113,7 @@ button{width:100%;padding:16px;font-size:20px;border:none;border-radius:12px;mar
   <div class="row"><span>Time</span><span id="time">00:00:00</span></div>
 </div>
 
-<div class="card">
-  <button id="startBtn" class="start" disabled>Verify ID First</button>
+<div class="card" id="statusCard">
   <button id="resetBtn" class="reset" disabled>Reset</button>
   <div id="gps">GPS idle</div>
   <div id="gapNotice" class="warn" style="display:none"></div>
@@ -109,7 +124,7 @@ button{width:100%;padding:16px;font-size:20px;border:none;border-radius:12px;mar
   <div id="map"></div>
 </div>
 
-<div class="card">
+<div class="card" id="dashboardCard">
   <h3>Earnings Dashboard</h3>
   <div>Today: £<span id="todayEarn">0</span></div>
   <div>This week: £<span id="weekEarn">0</span></div>
@@ -118,12 +133,16 @@ button{width:100%;padding:16px;font-size:20px;border:none;border-radius:12px;mar
   <div>Average fare: £<span id="avgFare">0</span></div>
 </div>
 
-<div class="card">
+<div class="card" id="historyCard">
   <h3>Trip History (Latest 5)</h3>
   <div id="history"></div>
   <button class="export" onclick="exportTrips()">Export CSV</button>
   <button id="syncBtn" class="sync" onclick="syncToSheet()">Sync to Google Sheets</button>
   <div id="syncStatus"></div>
+</div>
+
+<div id="actionBar">
+  <button id="startBtn" class="start" disabled>Verify ID First</button>
 </div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -225,11 +244,48 @@ const navMeta           = document.getElementById("navMeta")
 const gapNotice         = document.getElementById("gapNotice")
 const idleBanner        = document.getElementById("idleBanner")
 const idleText          = document.getElementById("idleText")
+const driverExpanded    = document.getElementById("driverExpanded")
+const destExpanded      = document.getElementById("destExpanded")
+const destSummary       = document.getElementById("destSummary")
+const pageTitle         = document.getElementById("pageTitle")
+const dashboardCard     = document.getElementById("dashboardCard")
+const historyCard       = document.getElementById("historyCard")
 
 let map = L.map("map").setView([BIAS.lat,BIAS.lng],13)
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map)
 let polyline = L.polyline([],{color:"lime"}).addTo(map)
 let route = []
+
+/* ---------- View management ----------
+   The app has two modes. Parked, the driver is typing and needs the setup
+   cards. Driving, the phone is in a mount and only three things matter:
+   the next turn, the fare, and the button that stops the charge. */
+
+function collapseDriverCard(){
+  driverExpanded.style.display = "none"
+  driverNameDisplay.className  = "collapsedStrip"
+}
+function expandDriverCard(){
+  if(running) return                 /* ID cannot be changed mid trip */
+  driverExpanded.style.display = "block"
+  driverNameDisplay.className  = ""
+}
+function collapseDestCard(){
+  if(!destination) return
+  destExpanded.style.display = "none"
+  destSummary.style.display  = "block"
+  destSummary.innerHTML      = destination.label + "<span class='sub'>Tap to change</span>"
+}
+function expandDestCard(){
+  destExpanded.style.display = "block"
+  destSummary.style.display  = "none"
+}
+function setDrivingView(on){
+  pageTitle.style.display     = on ? "none" : "block"
+  dashboardCard.style.display = on ? "none" : "block"
+  historyCard.style.display   = on ? "none" : "block"
+  if(on){ collapseDriverCard(); collapseDestCard() }
+}
 
 /* ---------- Driver ID ---------- */
 
@@ -242,6 +298,7 @@ function onIdInput(){
   idStatus.innerText = ""
   startBtn.disabled = true
   startBtn.textContent = "Verify ID First"
+  expandDriverCard()
 }
 
 /* ---------- Backend transport ---------- */
@@ -310,6 +367,7 @@ async function validateId(){
       driverNameDisplay.style.display="block"; driverNameDisplay.innerText="✓ "+json.name
       idStatus.style.color="#34c759"; idStatus.innerText="ID verified"
       startBtn.disabled=false; startBtn.textContent="Start Trip"
+      collapseDriverCard()
       localStorage.lastDriverId=id
     } else if(json.valid && !json.active){
       idStatus.style.color="#ff3b30"; idStatus.innerText="⛔ "+(json.message||"Account suspended. Contact your manager."); lockApp()
@@ -324,6 +382,7 @@ function lockApp(){
   validatedDriverId=null; validatedDriverName=null
   startBtn.disabled=true; startBtn.textContent="Verify ID First"
   driverNameDisplay.style.display="none"
+  expandDriverCard()
 }
 
 /* ---------- Destination lookup ---------- */
@@ -407,6 +466,7 @@ async function selectDestination(item){
   clearDestBtn.style.display = "block"
   arrivalSpoken = false
   await buildRoute(false)
+  collapseDestCard()
   saveTripState()
 }
 
@@ -416,6 +476,7 @@ function clearDestination(){
   destInput.value = ""; suggestions.innerHTML = ""; destStatus.innerText = ""
   estimateBox.style.display = "none"
   clearDestBtn.style.display = "none"
+  expandDestCard()
   navBanner.style.display = "none"
   if(routeLine){ map.removeLayer(routeLine); routeLine = null }
   if(destMarker){ map.removeLayer(destMarker); destMarker = null }
@@ -855,6 +916,7 @@ async function startTrip(){
   arrivalSpoken=false
   keepScreenAwake()
   startBtn.textContent="Stop Trip"; startBtn.className="stop"; startBtn.disabled=false; resetBtn.disabled=true
+  setDrivingView(true)
   speakFare("Trip started")
   timer=setInterval(tickOnce,1000)
   if(watch) navigator.geolocation.clearWatch(watch)
@@ -871,7 +933,7 @@ function stopTrip(){
   if(wakeLock){ wakeLock.release(); wakeLock=null }
   clearTripState(); endCoord=lastPos
   startBtn.textContent="Start Trip"; startBtn.className="start"; resetBtn.disabled=false
-  navBanner.style.display="none"; hideIdlePrompt()
+  navBanner.style.display="none"; hideIdlePrompt(); setDrivingView(false)
   speakFare("Trip complete. Total fare is "+totalStr+" pounds")
   saveTrip(totalStr); showReceipt(miles,duration,totalStr); update(); resetTrip()
 }
@@ -1016,6 +1078,7 @@ if(wasRunning&&validatedDriverId){
   running=true; startBtn.textContent="Stop Trip"; startBtn.className="stop"; startBtn.disabled=false; resetBtn.disabled=true
   driverInput.value=validatedDriverId; driverNameDisplay.style.display="block"; driverNameDisplay.innerText="✓ "+validatedDriverName
   idStatus.style.color="#34c759"; idStatus.innerText="Trip in progress"; gps.innerText="Resuming trip..."
+  setDrivingView(true)
   if(destination){ destInput.value=destination.label; clearDestBtn.style.display="block"; buildRoute(true) }
   keepScreenAwake()
   lastTickWall=Date.now()
