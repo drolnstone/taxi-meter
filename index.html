@@ -47,6 +47,8 @@ button{width:100%;padding:16px;font-size:20px;border:none;border-radius:12px;mar
 #navDist{font-size:28px;font-weight:bold;color:#5ab0ff}
 #navText{font-size:18px;color:#dbe9f7;margin-top:4px}
 #navMeta{font-size:13px;color:#7fa8cc;margin-top:6px}
+#idleBanner{background:#3a2a0a;border-left:3px solid #ff9f0a;border-radius:12px;padding:16px;margin-bottom:18px}
+#idleText{font-size:17px;color:#ffcf7a;line-height:1.4}
 .warn{background:#3a2a0a;border-left:3px solid #ff9f0a;border-radius:10px;padding:10px;font-size:14px;color:#ffcf7a;margin-top:10px}
 </style>
 </head>
@@ -77,6 +79,12 @@ button{width:100%;padding:16px;font-size:20px;border:none;border-radius:12px;mar
   <div id="navDist"></div>
   <div id="navText"></div>
   <div id="navMeta"></div>
+</div>
+
+<div id="idleBanner" style="display:none">
+  <div id="idleText"></div>
+  <button class="start" onclick="idleKeepRunning()">Yes, keep the meter running</button>
+  <button class="stop" onclick="idleEndTrip()">End the trip now</button>
 </div>
 
 <div class="fareDisplay">
@@ -142,6 +150,12 @@ const EST_HIGH            = 1.20
 const OFF_ROUTE_METRES    = 100
 const OFF_ROUTE_FIXES     = 4
 
+/* Idle watchdog. A meter left running after the passenger has gone keeps
+   charging waiting time, which is how a short job turns into a five hour fare. */
+const IDLE_PROMPT_MINUTES   = 20   /* no movement for this long triggers the prompt */
+const IDLE_REPROMPT_MINUTES = 10   /* how long "keep running" silences it for */
+const IDLE_MOVE_METRES      = 20   /* movement smaller than this counts as standing still */
+
 const FULL_PC    = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i
 const PARTIAL_PC = /^[A-Z]{1,2}\d[A-Z\d]?$/i
 
@@ -157,6 +171,7 @@ let offRouteCount = 0, rerouting = false
 let routeLine = null, destMarker = null
 
 let lastTickWall = 0
+let lastMovementAt = 0, idlePromptAt = 0
 let pendingGap = null, gapTimer = null
 let gapDistanceTotal = 0, gapEventCount = 0
 
@@ -208,6 +223,8 @@ const navDist           = document.getElementById("navDist")
 const navText           = document.getElementById("navText")
 const navMeta           = document.getElementById("navMeta")
 const gapNotice         = document.getElementById("gapNotice")
+const idleBanner        = document.getElementById("idleBanner")
+const idleText          = document.getElementById("idleText")
 
 let map = L.map("map").setView([BIAS.lat,BIAS.lng],13)
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map)
@@ -295,7 +312,7 @@ async function validateId(){
       startBtn.disabled=false; startBtn.textContent="Start Trip"
       localStorage.lastDriverId=id
     } else if(json.valid && !json.active){
-      idStatus.style.color="#ff3b30"; idStatus.innerText="⛔ Account suspended. Contact your manager."; lockApp()
+      idStatus.style.color="#ff3b30"; idStatus.innerText="⛔ "+(json.message||"Account suspended. Contact your manager."); lockApp()
     } else {
       idStatus.style.color="#ff3b30"; idStatus.innerText="✗ ID not recognised"; lockApp()
     }
@@ -649,6 +666,40 @@ function resolveGapWithFix(lat,lng){
   }
 }
 
+/* ---------- Idle watchdog ---------- */
+
+function noteMovement(){
+  lastMovementAt = Date.now()
+  hideIdlePrompt()
+}
+
+function hideIdlePrompt(){ idleBanner.style.display = "none" }
+
+function checkIdle(){
+  if(!running){ hideIdlePrompt(); return }
+  if(!lastMovementAt) lastMovementAt = Date.now()
+
+  const idleMs = Date.now() - lastMovementAt
+  if(idleMs < IDLE_PROMPT_MINUTES*60000) return
+  if(Date.now() - idlePromptAt < IDLE_REPROMPT_MINUTES*60000) return
+
+  idlePromptAt = Date.now()
+  idleBanner.style.display = "block"
+  idleText.innerText = "No movement for " + Math.floor(idleMs/60000) +
+    " minutes. The meter is still running and still charging waiting time."
+  speakFare("The meter is still running. Has this trip finished?")
+}
+
+function idleKeepRunning(){
+  idlePromptAt = Date.now()   /* silences the prompt for IDLE_REPROMPT_MINUTES */
+  hideIdlePrompt()
+}
+
+function idleEndTrip(){
+  hideIdlePrompt()
+  stopTrip()
+}
+
 function tickOnce(){
   const now = Date.now()
   let delta = Math.floor((now-lastTickWall)/1000)
@@ -658,6 +709,7 @@ function tickOnce(){
   updateTariff()
   if(delta <= 3){ for(let i=0;i<delta;i++) processTick(0) }
   else beginGap(delta)
+  checkIdle()
   saveTripState(); update()
 }
 
@@ -672,7 +724,7 @@ function saveTripState(){
   localStorage.activeTripState=JSON.stringify({
     running,distance,elapsed,accumulatedFare,currentTariff,startCoord,lastPos,
     distanceAccumulator,timeAccumulator,tripStartTime,validatedDriverId,validatedDriverName,
-    destination,quoted,gapDistanceTotal,gapEventCount,savedAt:Date.now()
+    destination,quoted,gapDistanceTotal,gapEventCount,lastMovementAt,savedAt:Date.now()
   })
 }
 
@@ -688,6 +740,7 @@ function restoreTripState(){
     tripStartTime=s.tripStartTime||null; validatedDriverId=s.validatedDriverId||null; validatedDriverName=s.validatedDriverName||null
     destination=s.destination||null; quoted=s.quoted||null
     gapDistanceTotal=s.gapDistanceTotal||0; gapEventCount=s.gapEventCount||0
+    lastMovementAt=s.lastMovementAt||0; idlePromptAt=0
     activeTariff=TARIFFS[currentTariff]||TARIFFS.Day
     elapsed=s.elapsed||0
     const secondsAway=Math.floor((Date.now()-s.savedAt)/1000)
@@ -751,7 +804,9 @@ function onPosition(p){
     const delta = getDistance(lastPos.lat,lastPos.lng,lat,lng)
     distance += delta
     processTick(delta)
+    if(delta > IDLE_MOVE_METRES || speed > activeTariff.speedThreshold) noteMovement()
   }
+  if(pendingGap === null && running && !lastMovementAt) lastMovementAt = Date.now()
 
   lastPos = {lat,lng}
   if(running){
@@ -780,7 +835,8 @@ async function startTrip(){
     const json = await postToBackend({type:"validate",driverId:validatedDriverId})
     if(!json.valid || !json.active){
       idStatus.style.color="#ff3b30"
-      idStatus.innerText="⛔ Account suspended. Contact your manager."
+      idStatus.innerText="⛔ "+(json.message||"Account suspended. Contact your manager.")
+      startBtn.disabled=true; startBtn.textContent="Verify ID First"
       lockApp(); return
     }
   } catch(err){
@@ -795,6 +851,7 @@ async function startTrip(){
   gapDistanceTotal=0; gapEventCount=0; pendingGap=null
   accumulatedFare=activeTariff.base; tripStartTime=localTimestamp()
   lastTickWall=Date.now()
+  lastMovementAt=Date.now(); idlePromptAt=0
   arrivalSpoken=false
   keepScreenAwake()
   startBtn.textContent="Stop Trip"; startBtn.className="stop"; startBtn.disabled=false; resetBtn.disabled=true
@@ -814,7 +871,7 @@ function stopTrip(){
   if(wakeLock){ wakeLock.release(); wakeLock=null }
   clearTripState(); endCoord=lastPos
   startBtn.textContent="Start Trip"; startBtn.className="start"; resetBtn.disabled=false
-  navBanner.style.display="none"
+  navBanner.style.display="none"; hideIdlePrompt()
   speakFare("Trip complete. Total fare is "+totalStr+" pounds")
   saveTrip(totalStr); showReceipt(miles,duration,totalStr); update(); resetTrip()
 }
