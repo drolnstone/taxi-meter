@@ -227,13 +227,67 @@ function onIdInput(){
   startBtn.textContent = "Verify ID First"
 }
 
+/* ---------- Backend transport ---------- */
+
+/* Every backend call goes through here so a failure names its actual cause
+   instead of blaming the connection. The three failure modes look identical
+   to the old code but need completely different fixes:
+     network  device offline, OR the deployment is not set to "Anyone" access
+     http     the script ran and returned an error status
+     parse    something answered but it was not JSON, usually a Google error page  */
+function describeNonJson(text){
+  const t = String(text||"").slice(0,600)
+  if(/accounts\.google\.com|Sign in|ServiceLogin/i.test(t))
+    return "Google returned a sign-in page. Set the deployment's 'Who has access' to Anyone."
+  if(/Script function not found/i.test(t))
+    return "Deployment is live but doPost was not found. Redeploy a new version."
+  if(/Authorization is required|requires authorization/i.test(t))
+    return "The script needs re-authorising. Run any function once from the editor and accept the prompts."
+  if(/Moved Temporarily|Found\. Redirecting/i.test(t))
+    return "The request was redirected, which usually means the access setting is not Anyone."
+  if(/^\s*</.test(t))
+    return "Received an HTML page instead of JSON. Check the deployment URL and its access setting."
+  return "Response was not valid JSON: " + t.slice(0,120)
+}
+
+async function postToBackend(payload){
+  let res, text
+  try{
+    res = await fetch(SYNC_URL,{method:"POST",body:JSON.stringify(payload)})
+  }catch(netErr){
+    const e = new Error("No response from the backend. Either the device is offline, or the deployment's access is not set to Anyone, which redirects to a sign-in page the app cannot read.")
+    e.kind = "network"; throw e
+  }
+  try{ text = await res.text() }
+  catch(readErr){ const e = new Error("Server replied but the body could not be read."); e.kind="read"; throw e }
+
+  if(/accounts\.google\.com/i.test(res.url||"")){
+    const e = new Error("Redirected to Google sign-in. Set 'Who has access' to Anyone and redeploy.")
+    e.kind = "auth"; throw e
+  }
+  if(!res.ok){
+    const e = new Error("HTTP "+res.status+(res.statusText?" "+res.statusText:"")+". "+describeNonJson(text))
+    e.kind = "http"; e.status = res.status; e.body = text; throw e
+  }
+  try{ return JSON.parse(text) }
+  catch(parseErr){
+    const e = new Error(describeNonJson(text))
+    e.kind = "parse"; e.body = text; throw e
+  }
+}
+
+function reportBackendError(el,err,context){
+  console.error("[taxi] "+context+" failed:",err,err && err.body ? err.body.slice(0,1000) : "")
+  el.style.color = "#ff9f0a"
+  el.innerText = "⚠ " + (err && err.message ? err.message : "Unknown error") + " (details in console)"
+}
+
 async function validateId(){
   const id = driverInput.value.trim().toUpperCase()
   if(id.length < 7){ idStatus.style.color="#ff3b30"; idStatus.innerText="Enter a valid ID (e.g. TX-A7K3M)"; return }
   verifyBtn.disabled = true; idStatus.style.color="#999"; idStatus.innerText="Verifying..."
   try{
-    const res  = await fetch(SYNC_URL,{method:"POST",body:JSON.stringify({type:"validate",driverId:id})})
-    const json = await res.json()
+    const json = await postToBackend({type:"validate",driverId:id})
     if(json.valid && json.active){
       validatedDriverId=id; validatedDriverName=json.name
       driverNameDisplay.style.display="block"; driverNameDisplay.innerText="✓ "+json.name
@@ -245,7 +299,7 @@ async function validateId(){
     } else {
       idStatus.style.color="#ff3b30"; idStatus.innerText="✗ ID not recognised"; lockApp()
     }
-  }catch(err){ idStatus.style.color="#ff9f0a"; idStatus.innerText="⚠ Could not reach server. Check connection." }
+  }catch(err){ reportBackendError(idStatus,err,"validate") }
   verifyBtn.disabled = false
 }
 
@@ -723,8 +777,7 @@ async function startTrip(){
 
   startBtn.disabled=true; startBtn.textContent="Checking..."
   try{
-    const res  = await fetch(SYNC_URL,{method:"POST",body:JSON.stringify({type:"validate",driverId:validatedDriverId})})
-    const json = await res.json()
+    const json = await postToBackend({type:"validate",driverId:validatedDriverId})
     if(!json.valid || !json.active){
       idStatus.style.color="#ff3b30"
       idStatus.innerText="⛔ Account suspended. Contact your manager."
@@ -732,7 +785,8 @@ async function startTrip(){
     }
   } catch(err){
     startBtn.disabled=false; startBtn.textContent="Start Trip"
-    alert("⚠ Could not verify with server. Check your connection before starting a trip.")
+    reportBackendError(idStatus,err,"pre-trip validate")
+    alert("Cannot start the trip.\n\n"+(err && err.message ? err.message : "Unknown error"))
     return
   }
 
@@ -863,8 +917,7 @@ async function syncToSheet(){
   if(!unsynced.length){ syncStatus.style.color="#34c759"; syncStatus.innerText="✓ All trips already synced."; return }
   syncBtn.disabled=true; syncStatus.style.color="#999"; syncStatus.innerText="Syncing "+unsynced.length+" trip(s)..."
   try{
-    let res=await fetch(SYNC_URL,{method:"POST",body:JSON.stringify({type:"sync",driverId:validatedDriverId,driverName:validatedDriverName,trips:unsynced})})
-    let json=await res.json()
+    const json = await postToBackend({type:"sync",driverId:validatedDriverId,driverName:validatedDriverName,trips:unsynced})
     if(json.status==="ok"){
       const syncedIds=new Set(unsynced.map(t=>t.tripId))
       trips=trips.map(t=>syncedIds.has(t.tripId)?{...t,synced:true}:t)
@@ -873,13 +926,20 @@ async function syncToSheet(){
       if(json.skipped>0) msg+=" ("+json.skipped+" duplicate(s) skipped)"
       if(json.errors&&json.errors.length) msg+=" | Errors: "+json.errors.join("; ")
       syncStatus.style.color="#34c759"; syncStatus.innerText=msg
-    } else throw json.message||"Unknown error"
-  }catch(err){ syncStatus.style.color="#ff3b30"; syncStatus.innerText="✗ Sync failed: "+err }
+    } else throw new Error(json.message||"Backend rejected the sync without giving a reason")
+  }catch(err){
+    console.error("[taxi] sync failed:",err,err && err.body ? err.body.slice(0,1000) : "")
+    syncStatus.style.color="#ff3b30"
+    syncStatus.innerText="✗ Sync failed: "+(err && err.message ? err.message : err)
+  }
   syncBtn.disabled=false
 }
 
+/* Fire and forget. A failed log must never block or delay a trip, but it should
+   still leave a trace in the console rather than vanishing silently. */
 function notifyOwner(driverId,driverName,action){
-  try{ fetch(SYNC_URL,{method:"POST",body:JSON.stringify({type:"instantLog",driverId,driverName,action,timestamp:localTimestamp()})}) }catch(e){}
+  postToBackend({type:"instantLog",driverId,driverName,action,timestamp:localTimestamp()})
+    .catch(err=>console.warn("[taxi] instant log not delivered:",err && err.message ? err.message : err))
 }
 
 /* ---------- Boot ---------- */
