@@ -1,158 +1,302 @@
 <!DOCTYPE html>
-
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Taxi Meter</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 <style>
-body{font-family:-apple-system,Arial;background:#0b0b0b;color:white;margin:0;
-  padding:calc(20px + env(safe-area-inset-top)) 20px 130px 20px}
-h1{text-align:center;margin-bottom:20px}
-.fareDisplay{text-align:center;margin-bottom:25px}
-.fareLabel{font-size:18px;color:#999}
-.fareValue{font-size:72px;font-weight:bold;color:#FFD60A;letter-spacing:3px}
-#tariff{text-align:center;font-size:16px;margin-bottom:10px;padding:6px;border-radius:6px;background:#333;color:#fff;width:100px;margin-left:auto;margin-right:auto;}
-.card{background:#1c1c1e;padding:18px;border-radius:16px;margin-bottom:18px}
+:root{
+  --bg:#0b0b0b; --card:#1c1c1e; --field:#2c2c2e; --line:#333;
+  --blue:#0a84ff; --red:#ff3b30; --green:#34c759; --amber:#ff9f0a;
+  --fare:#FFD60A; --dim:#8a8a8e;
+}
+*{-webkit-tap-highlight-color:transparent}
+body{font-family:-apple-system,Arial;background:var(--bg);color:white;margin:0;
+  padding:0 20px 160px 20px}
+
+/* ---------- Persistent chrome ---------- */
+#topBar{position:sticky;top:0;z-index:900;display:flex;align-items:center;justify-content:space-between;
+  gap:12px;padding:calc(12px + env(safe-area-inset-top)) 0 12px 0;margin-bottom:8px;
+  background:rgba(11,11,11,0.92);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+#whoami{font-size:16px;color:var(--green);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#whoami .sub{display:block;font-size:12px;color:var(--dim)}
+#tariff{font-size:14px;padding:6px 14px;border-radius:999px;background:#333;color:#fff;flex:none}
+
+#bottomDock{position:fixed;left:0;right:0;bottom:0;z-index:1000;
+  background:rgba(11,11,11,0.94);border-top:1px solid #2a2a2a;
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+  padding-bottom:env(safe-area-inset-bottom)}
+#actionBar{padding:12px 20px}
+#actionBar button{margin-top:0}
+#tabBar{display:flex;border-top:1px solid #2a2a2a}
+#tabBar button{flex:1;width:auto;margin:0;padding:10px 4px 12px 4px;background:none;border-radius:0;
+  color:var(--dim);font-size:12px;line-height:1.5}
+#tabBar button .ic{display:block;font-size:20px;line-height:1.1}
+#tabBar button.on{color:var(--blue)}
+
+/* ---------- Pages ---------- */
+.page{display:none}
+.page.active{display:block}
+h1{text-align:center;margin:28px 0 20px 0}
+h2{font-size:22px;margin:4px 0 16px 0}
+
+/* ---------- Shared components ---------- */
+.card{background:var(--card);padding:18px;border-radius:16px;margin-bottom:18px}
+.card h3{margin-top:0}
 .row{display:flex;justify-content:space-between;font-size:20px;margin:10px 0}
-button{width:100%;padding:16px;font-size:20px;border:none;border-radius:12px;margin-top:10px;cursor:pointer;}
-.start{background:#0a84ff;color:white}
-.stop{background:#ff3b30;color:white}
+.row.sm{font-size:15px;color:var(--dim)}
+button{width:100%;padding:16px;font-size:20px;border:none;border-radius:12px;margin-top:10px;cursor:pointer}
+button:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+.start{background:var(--blue);color:white}
+.stop{background:var(--red);color:white}
 .reset{background:#3a3a3c;color:white}
 .reset:disabled{background:#222;color:#555;cursor:not-allowed}
-.export{background:#34c759;color:black}
-.sync{background:#ff9f0a;color:black}
+.export{background:var(--green);color:black}
+.sync{background:var(--amber);color:black}
 .sync:disabled{background:#3a3a3c;color:#888;cursor:not-allowed}
-#map{height:260px;border-radius:12px}
-.history{border-bottom:1px solid #333;padding:6px 0}
-#driverInput,#destInput{width:100%;padding:12px;font-size:18px;border-radius:10px;border:none;background:#2c2c2e;color:white;box-sizing:border-box;margin-bottom:6px;text-align:center;}
-#syncStatus{font-size:14px;color:#999;margin-top:8px;text-align:center;min-height:20px;}
-#verifyBtn{background:#0a84ff;color:white;margin-top:6px}
-#verifyBtn:disabled{background:#222;color:#555;cursor:not-allowed}
-#driverNameDisplay{display:none;margin-top:6px;padding:10px;background:#2c2c2e;border-radius:10px;font-size:16px;color:#34c759;text-align:center;border-left:3px solid #34c759}
-#idStatus{font-size:14px;color:#999;margin-top:6px;text-align:center;min-height:18px}
 .start:disabled{background:#222;color:#555;cursor:not-allowed}
-
+.ghost{background:none;border:1px solid #3a3a3c;color:#ddd}
 .fieldLabel{font-size:15px;color:#999;display:block;margin-bottom:6px}
-.sugg{padding:12px 10px;border-bottom:1px solid #333;font-size:16px;cursor:pointer}
+input[type=text]{width:100%;padding:12px;font-size:18px;border-radius:10px;border:none;
+  background:var(--field);color:white;box-sizing:border-box;margin-bottom:6px;text-align:center}
+.empty{color:#666;padding:14px 0;font-size:15px}
+.warn{background:#3a2a0a;border-left:3px solid var(--amber);border-radius:10px;padding:10px;
+  font-size:14px;color:#ffcf7a;margin-top:10px}
+.mapHost{height:260px;border-radius:12px;overflow:hidden}
+#map{height:260px;border-radius:12px}
+
+/* ---------- Sign in ---------- */
+#verifyBtn{background:var(--blue);color:white;margin-top:6px}
+#verifyBtn:disabled{background:#222;color:#555;cursor:not-allowed}
+#idStatus{font-size:14px;color:#999;margin-top:10px;text-align:center;min-height:18px}
+#signinHint{color:var(--dim);font-size:14px;text-align:center;margin-top:18px;line-height:1.5}
+#page-signin{padding-top:calc(20px + env(safe-area-inset-top))}
+
+/* ---------- Destination ---------- */
+.sugg{padding:12px 10px;border-bottom:1px solid var(--line);font-size:16px;cursor:pointer}
 .sugg:last-child{border-bottom:none}
-.sugg:active{background:#2c2c2e}
-#suggestions{background:#2c2c2e;border-radius:10px;overflow:hidden;margin-bottom:6px}
+.sugg:active{background:var(--field)}
+#suggestions{background:var(--field);border-radius:10px;overflow:hidden;margin-bottom:6px}
 #suggestions:empty{display:none}
 #destStatus{font-size:14px;color:#999;text-align:center;min-height:18px}
-#estimateBox{margin-top:10px;padding:14px;background:#12251a;border-left:3px solid #34c759;border-radius:10px}
+#estimateBox{margin-top:10px;padding:14px;background:#12251a;border-left:3px solid var(--green);border-radius:10px}
 .estLine{font-size:15px;color:#9fdfb5;margin:2px 0}
-.estFare{font-size:26px;font-weight:bold;color:#34c759;margin:6px 0}
+.estFare{font-size:26px;font-weight:bold;color:var(--green);margin:6px 0}
 .estNote{font-size:13px;color:#7a9a86;margin-top:6px}
-#navBanner{background:#0a2a4a;border-left:3px solid #0a84ff;border-radius:12px;padding:14px;margin-bottom:18px}
+.collapsedStrip{padding:12px;background:var(--field);border-radius:10px;font-size:16px;
+  text-align:center;cursor:pointer;border-left:3px solid var(--blue);color:#5ab0ff}
+.collapsedStrip .sub{display:block;font-size:13px;color:var(--dim);margin-top:3px}
+
+/* ---------- Trip ---------- */
+#navBanner{background:#0a2a4a;border-left:3px solid var(--blue);border-radius:12px;padding:14px;margin-bottom:18px}
 #navDist{font-size:28px;font-weight:bold;color:#5ab0ff}
 #navText{font-size:18px;color:#dbe9f7;margin-top:4px}
 #navMeta{font-size:13px;color:#7fa8cc;margin-top:6px}
-/* Start and Stop lives in a fixed bar at thumb height. It is the control that
-   ends the charge, so it must never be somewhere the driver has to scroll for. */
-#actionBar{position:fixed;left:0;right:0;bottom:0;z-index:1000;
-  padding:12px 20px calc(12px + env(safe-area-inset-bottom)) 20px;
-  background:rgba(11,11,11,0.94);border-top:1px solid #2a2a2a;
-  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
-#actionBar button{margin-top:0}
-.collapsedStrip{padding:12px;background:#2c2c2e;border-radius:10px;font-size:16px;
-  text-align:center;cursor:pointer;border-left:3px solid #34c759;color:#34c759}
-.collapsedStrip .sub{display:block;font-size:13px;color:#8a8a8e;margin-top:3px}
-#idleBanner{background:#3a2a0a;border-left:3px solid #ff9f0a;border-radius:12px;padding:16px;margin-bottom:18px}
+#idleBanner{background:#3a2a0a;border-left:3px solid var(--amber);border-radius:12px;padding:16px;margin-bottom:18px}
 #idleText{font-size:17px;color:#ffcf7a;line-height:1.4}
-.warn{background:#3a2a0a;border-left:3px solid #ff9f0a;border-radius:10px;padding:10px;font-size:14px;color:#ffcf7a;margin-top:10px}
+.fareDisplay{text-align:center;margin:10px 0 25px 0}
+.fareLabel{font-size:18px;color:#999}
+.fareValue{font-size:72px;font-weight:bold;color:var(--fare);letter-spacing:3px}
+#tripEst{font-size:14px;color:#9fdfb5;text-align:center;margin-bottom:14px}
+
+/* ---------- Records ---------- */
+.history{border-bottom:1px solid var(--line);padding:12px 4px;cursor:pointer}
+.history:last-child{border-bottom:none}
+.history:active{background:#242426}
+.history .line1{font-size:17px}
+.history .line2{color:var(--dim);font-size:13px;margin-top:3px}
+.chev{float:right;color:#555}
+#syncStatus,#healthStatus{font-size:14px;color:#999;margin-top:8px;text-align:center;min-height:20px}
+.bigStat{font-size:34px;font-weight:bold;color:var(--fare)}
+.statLabel{font-size:14px;color:var(--dim)}
+.tt{width:100%;border-collapse:collapse;font-size:13px}
+.tt th,.tt td{text-align:left;padding:6px 4px;border-bottom:1px solid #2a2a2a}
+.tt th{color:var(--dim);font-weight:normal}
+#receiptText{white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;font-size:13px;
+  color:#c8c8cc;background:#141416;padding:14px;border-radius:10px;overflow-x:auto}
+.summaryFare{text-align:center;font-size:56px;font-weight:bold;color:var(--fare);margin:6px 0}
+.summarySub{text-align:center;color:var(--dim);font-size:15px;margin-bottom:6px}
+
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
 <body>
 
-<h1 id="pageTitle">Taxi Meter</h1>
+<header id="topBar" style="display:none">
+  <div id="whoami">Not signed in</div>
+  <div id="tariff">Day</div>
+</header>
 
-<div class="card" id="driverCard">
-  <div id="driverExpanded">
-    <label class="fieldLabel">Driver ID</label>
-    <input id="driverInput" type="text" placeholder="Enter your Driver ID" oninput="onIdInput()" onkeydown="if(event.key==='Enter')validateId()" maxlength="8">
+<!-- ============ SIGN IN ============ -->
+<section class="page" id="page-signin">
+  <h1>Taxi Meter</h1>
+  <div class="card">
+    <label class="fieldLabel" for="driverInput">Driver ID</label>
+    <input id="driverInput" type="text" placeholder="TX-A7K3M" oninput="onIdInput()"
+           onkeydown="if(event.key==='Enter')validateId()" maxlength="8" autocomplete="off">
     <button id="verifyBtn" onclick="validateId()">Verify ID</button>
+    <div id="idStatus"></div>
   </div>
-  <div id="driverNameDisplay" onclick="expandDriverCard()"></div>
-  <div id="idStatus"></div>
-</div>
+  <p id="signinHint">Your ID is checked against the office record each time you sign in and again when you start a trip.</p>
+</section>
 
-<div class="card" id="destCard">
-  <div id="destExpanded">
-    <label class="fieldLabel">Destination (postcode or address)</label>
-    <input id="destInput" type="text" placeholder="L4 0TH or 24 Scotland Road" autocomplete="off">
-    <div id="suggestions"></div>
+<!-- ============ HOME ============ -->
+<section class="page" id="page-home">
+  <h2>Set up the job</h2>
+
+  <div class="card" id="destCard">
+    <div id="destExpanded">
+      <label class="fieldLabel" for="destInput">Destination (postcode or address)</label>
+      <input id="destInput" type="text" placeholder="L4 0TH or 24 Scotland Road" autocomplete="off">
+      <div id="suggestions"></div>
+    </div>
+    <div id="destSummary" class="collapsedStrip" style="display:none" onclick="expandDestCard()"></div>
+    <div id="destStatus"></div>
+    <div id="estimateBox" style="display:none"></div>
+    <button id="clearDestBtn" class="reset" onclick="clearDestination()" style="display:none">Clear destination</button>
   </div>
-  <div id="destSummary" class="collapsedStrip" style="display:none;border-left-color:#0a84ff;color:#5ab0ff" onclick="expandDestCard()"></div>
-  <div id="destStatus"></div>
-  <div id="estimateBox" style="display:none"></div>
-  <button id="clearDestBtn" class="reset" onclick="clearDestination()" style="display:none">Clear destination</button>
-</div>
 
-<div id="tariff">Day</div>
+  <div class="card">
+    <h3>Route preview</h3>
+    <div class="mapHost" id="mapHome"><div id="map"></div></div>
+  </div>
+</section>
 
-<div id="navBanner" style="display:none">
-  <div id="navDist"></div>
-  <div id="navText"></div>
-  <div id="navMeta"></div>
-</div>
+<!-- ============ TRIP ============ -->
+<section class="page" id="page-trip">
+  <div id="navBanner" style="display:none">
+    <div id="navDist"></div>
+    <div id="navText"></div>
+    <div id="navMeta"></div>
+  </div>
 
-<div id="idleBanner" style="display:none">
-  <div id="idleText"></div>
-  <button class="start" onclick="idleKeepRunning()">Yes, keep the meter running</button>
-  <button class="stop" onclick="idleEndTrip()">End the trip now</button>
-</div>
+  <div id="idleBanner" style="display:none">
+    <div id="idleText"></div>
+    <button class="start" onclick="idleKeepRunning()">Yes, keep the meter running</button>
+    <button class="stop" onclick="idleEndTrip()">End the trip now</button>
+  </div>
 
-<div class="fareDisplay">
-  <div class="fareLabel">FARE</div>
-  <div id="fare" class="fareValue">£3.40</div>
-</div>
+  <div class="fareDisplay">
+    <div class="fareLabel">FARE</div>
+    <div id="fare" class="fareValue">£3.40</div>
+  </div>
+  <div id="tripEst" style="display:none"></div>
 
-<div class="card">
-  <div class="row"><span>Distance</span><span id="distance">0.00 mi</span></div>
-  <div class="row"><span>Time</span><span id="time">00:00:00</span></div>
-</div>
+  <div class="card">
+    <div class="row"><span>Distance</span><span id="distance">0.00 mi</span></div>
+    <div class="row"><span>Time</span><span id="time">00:00:00</span></div>
+    <div class="row sm"><span>GPS</span><span id="gpsTrip">idle</span></div>
+    <div id="gapNotice" class="warn" style="display:none"></div>
+  </div>
 
-<div class="card" id="statusCard">
-  <button id="resetBtn" class="reset" disabled>Reset</button>
-  <div id="gps">GPS idle</div>
-  <div id="gapNotice" class="warn" style="display:none"></div>
-</div>
+  <div class="card">
+    <h3>Route</h3>
+    <div class="mapHost" id="mapTrip"></div>
+  </div>
+</section>
 
-<div class="card">
-  <h3>Route</h3>
-  <div id="map"></div>
-</div>
+<!-- ============ SUMMARY ============ -->
+<section class="page" id="page-summary">
+  <h2 id="summaryTitle">Trip complete</h2>
+  <div class="card">
+    <div class="summaryFare" id="summaryFare">£0.00</div>
+    <div class="summarySub" id="summarySub"></div>
+    <div id="summaryRows"></div>
+    <div id="summaryWarn" class="warn" style="display:none"></div>
+  </div>
+  <div class="card">
+    <h3>Receipt</h3>
+    <div id="receiptText"></div>
+    <button class="export" onclick="shareCurrentReceipt()">Share receipt</button>
+    <button class="ghost" onclick="copyCurrentReceipt()">Copy to clipboard</button>
+    <div id="shareStatus" style="font-size:14px;color:#999;text-align:center;min-height:18px;margin-top:8px"></div>
+  </div>
+  <button class="start" id="summaryDoneBtn" onclick="summaryDone()">Done</button>
+</section>
 
-<div class="card" id="dashboardCard">
-  <h3>Earnings Dashboard</h3>
-  <div>Today: £<span id="todayEarn">0</span></div>
-  <div>This week: £<span id="weekEarn">0</span></div>
-  <div>This month: £<span id="monthEarn">0</span></div>
-  <div>Lifetime: £<span id="lifeEarn">0</span></div>
-  <div>Average fare: £<span id="avgFare">0</span></div>
-</div>
+<!-- ============ HISTORY ============ -->
+<section class="page" id="page-history">
+  <h2>Trip history</h2>
+  <div class="card">
+    <div id="history"></div>
+  </div>
+  <div class="card">
+    <h3>Office sync</h3>
+    <button id="syncBtn" class="sync" onclick="syncToSheet()">Sync to Google Sheets</button>
+    <button class="export" onclick="exportTrips()">Export CSV</button>
+    <div id="syncStatus"></div>
+  </div>
+</section>
 
-<div class="card" id="historyCard">
-  <h3>Trip History (Latest 5)</h3>
-  <div id="history"></div>
-  <button class="export" onclick="exportTrips()">Export CSV</button>
-  <button id="syncBtn" class="sync" onclick="syncToSheet()">Sync to Google Sheets</button>
-  <div id="syncStatus"></div>
-</div>
+<!-- ============ EARNINGS ============ -->
+<section class="page" id="page-earnings">
+  <h2>Earnings</h2>
+  <div class="card">
+    <div class="statLabel">Today</div>
+    <div class="bigStat">£<span id="todayEarn">0</span></div>
+  </div>
+  <div class="card">
+    <div class="row"><span>This week</span><span>£<span id="weekEarn">0</span></span></div>
+    <div class="row"><span>This month</span><span>£<span id="monthEarn">0</span></span></div>
+    <div class="row"><span>Lifetime</span><span>£<span id="lifeEarn">0</span></span></div>
+    <div class="row"><span>Average fare</span><span>£<span id="avgFare">0</span></span></div>
+    <div class="row"><span>Trips recorded</span><span id="tripCount">0</span></div>
+  </div>
+</section>
 
-<div id="actionBar">
-  <button id="startBtn" class="start" disabled>Verify ID First</button>
+<!-- ============ SETTINGS ============ -->
+<section class="page" id="page-settings">
+  <h2>Settings</h2>
+
+  <div class="card">
+    <h3>Meter</h3>
+    <div class="row sm"><span>GPS</span><span id="gpsSettings">idle</span></div>
+    <button id="resetBtn" class="reset" disabled>Reset meter</button>
+  </div>
+
+  <div class="card">
+    <h3>Backend</h3>
+    <button class="ghost" onclick="healthCheck()">Test connection</button>
+    <div id="healthStatus"></div>
+  </div>
+
+  <div class="card">
+    <h3>Tariff reference</h3>
+    <div id="tariffTable"></div>
+    <p style="font-size:13px;color:var(--dim);line-height:1.5">
+      Steps are shown in metres because that is what the phone reports. Check them against the
+      published council table before changing anything.</p>
+  </div>
+
+  <div class="card">
+    <h3>Driver</h3>
+    <button class="reset" onclick="signOut()">Sign out</button>
+  </div>
+</section>
+
+<!-- ============ DOCK ============ -->
+<div id="bottomDock">
+  <div id="actionBar" style="display:none">
+    <button id="actionBtn" class="start" disabled>Verify ID first</button>
+  </div>
+  <nav id="tabBar" style="display:none">
+    <button data-route="home"><span class="ic">🚕</span>Meter</button>
+    <button data-route="history"><span class="ic">🧾</span>History</button>
+    <button data-route="earnings"><span class="ic">📊</span>Earnings</button>
+    <button data-route="settings"><span class="ic">⚙️</span>Settings</button>
+  </nav>
 </div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-
 <script>
 const SYNC_URL = "https://script.google.com/macros/s/AKfycbwfVdwML13iR7X_RQDB9ntchayc-byxHEWjp__Xcxiy9w0LmaepWt5VwAaYNd4BAppx/exec"
 
-/* Routing and geocoding services */
-const ORS_KEY        = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6ImY2NjMzMDJhZTQzMTRlNTY5Zjg3ZDNiYjI3NmYzZDZhIiwiaCI6Im11cm11cjY0In0="
-const ORS_DIRECTIONS = "https://api.openrouteservice.org/v2/directions/driving-car/geojson"
+/* Routing and geocoding services.
+
+   There is deliberately no OpenRouteService key in this file. It lives in the
+   Apps Script project's Script Properties and route requests are proxied through
+   the backend, because anything written here is readable by anyone who opens the
+   page. postcodes.io and Photon need no key, so they stay client side. */
 const POSTCODES_URL  = "https://api.postcodes.io/postcodes/"
 const PHOTON_URL     = "https://photon.komoot.io/api/"
 const BIAS           = {lat:53.4084, lng:-2.9916}   /* Liverpool city centre */
@@ -183,6 +327,7 @@ let distance = 0, elapsed = 0, lastPos = null, speed = 0
 let accumulatedFare = 0, currentTariff = "Day", tripStartTime = null
 let startCoord = null, endCoord = null
 let validatedDriverId = null, validatedDriverName = null
+let sessionToken = null   /* issued by the backend at verify time, signed and time limited */
 
 let destination = null, quoted = null
 let navSteps = [], currentStepIdx = 0, routeCoords = [], arrivalSpoken = false
@@ -213,79 +358,153 @@ const TARIFFS = {
 }
 let distanceAccumulator = 0, timeAccumulator = 0, activeTariff = TARIFFS.Day
 
-const distanceEl        = document.getElementById("distance")
-const timeEl            = document.getElementById("time")
-const fareEl            = document.getElementById("fare")
-const startBtn          = document.getElementById("startBtn")
-const resetBtn          = document.getElementById("resetBtn")
-const gps               = document.getElementById("gps")
-const historyDiv        = document.getElementById("history")
-const todayEarnElem     = document.getElementById("todayEarn")
-const weekEarnElem      = document.getElementById("weekEarn")
-const monthEarnElem     = document.getElementById("monthEarn")
-const lifeEarnElem      = document.getElementById("lifeEarn")
-const avgFareElem       = document.getElementById("avgFare")
-const tariffElem        = document.getElementById("tariff")
-const syncBtn           = document.getElementById("syncBtn")
-const syncStatus        = document.getElementById("syncStatus")
-const driverInput       = document.getElementById("driverInput")
-const verifyBtn         = document.getElementById("verifyBtn")
-const driverNameDisplay = document.getElementById("driverNameDisplay")
-const idStatus          = document.getElementById("idStatus")
-const destInput         = document.getElementById("destInput")
-const suggestions       = document.getElementById("suggestions")
-const destStatus        = document.getElementById("destStatus")
-const estimateBox       = document.getElementById("estimateBox")
-const clearDestBtn      = document.getElementById("clearDestBtn")
-const navBanner         = document.getElementById("navBanner")
-const navDist           = document.getElementById("navDist")
-const navText           = document.getElementById("navText")
-const navMeta           = document.getElementById("navMeta")
-const gapNotice         = document.getElementById("gapNotice")
-const idleBanner        = document.getElementById("idleBanner")
-const idleText          = document.getElementById("idleText")
-const driverExpanded    = document.getElementById("driverExpanded")
-const destExpanded      = document.getElementById("destExpanded")
-const destSummary       = document.getElementById("destSummary")
-const pageTitle         = document.getElementById("pageTitle")
-const dashboardCard     = document.getElementById("dashboardCard")
-const historyCard       = document.getElementById("historyCard")
+const $ = id => document.getElementById(id)
+
+const distanceEl        = $("distance")
+const timeEl            = $("time")
+const fareEl            = $("fare")
+const actionBtn         = $("actionBtn")
+const actionBar         = $("actionBar")
+const tabBar            = $("tabBar")
+const bottomDock        = $("bottomDock")
+const topBar            = $("topBar")
+const whoami            = $("whoami")
+const resetBtn          = $("resetBtn")
+const gpsTrip           = $("gpsTrip")
+const gpsSettings       = $("gpsSettings")
+const historyDiv        = $("history")
+const todayEarnElem     = $("todayEarn")
+const weekEarnElem      = $("weekEarn")
+const monthEarnElem     = $("monthEarn")
+const lifeEarnElem      = $("lifeEarn")
+const avgFareElem       = $("avgFare")
+const tripCountElem     = $("tripCount")
+const tariffElem        = $("tariff")
+const tariffTable       = $("tariffTable")
+const syncBtn           = $("syncBtn")
+const syncStatus        = $("syncStatus")
+const healthStatus      = $("healthStatus")
+const driverInput       = $("driverInput")
+const verifyBtn         = $("verifyBtn")
+const idStatus          = $("idStatus")
+const destInput         = $("destInput")
+const suggestions       = $("suggestions")
+const destStatus        = $("destStatus")
+const estimateBox       = $("estimateBox")
+const clearDestBtn      = $("clearDestBtn")
+const destExpanded      = $("destExpanded")
+const destSummary       = $("destSummary")
+const navBanner         = $("navBanner")
+const navDist           = $("navDist")
+const navText           = $("navText")
+const navMeta           = $("navMeta")
+const tripEst           = $("tripEst")
+const gapNotice         = $("gapNotice")
+const idleBanner        = $("idleBanner")
+const idleText          = $("idleText")
+const summaryTitle      = $("summaryTitle")
+const summaryFare       = $("summaryFare")
+const summarySub        = $("summarySub")
+const summaryRows       = $("summaryRows")
+const summaryWarn       = $("summaryWarn")
+const receiptTextEl     = $("receiptText")
+const shareStatus       = $("shareStatus")
+const summaryDoneBtn    = $("summaryDoneBtn")
 
 let map = L.map("map").setView([BIAS.lat,BIAS.lng],13)
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map)
 let polyline = L.polyline([],{color:"lime"}).addTo(map)
 let route = []
+const mapEl = $("map")
 
-/* ---------- View management ----------
-   The app has two modes. Parked, the driver is typing and needs the setup
-   cards. Driving, the phone is in a mount and only three things matter:
-   the next turn, the fare, and the button that stops the charge. */
+function setGps(text){ gpsTrip.innerText = text; gpsSettings.innerText = text }
 
-function collapseDriverCard(){
-  driverExpanded.style.display = "none"
-  driverNameDisplay.className  = "collapsedStrip"
+/* ---------- Router ----------
+   Pages follow the driver's actual state, not free navigation. Two hard rules:
+   no page without a verified ID, and no page other than the meter while the
+   meter is running. The tab bar disappears mid trip so Stop is never one tap
+   away from being lost. */
+
+const PAGES = ["signin","home","trip","summary","history","earnings","settings"]
+let currentPage = null
+let summaryContext = null    /* {mode:"live"|"past", trip, text} */
+
+function resolveRoute(want){
+  if(!validatedDriverId) return "signin"
+  if(running) return "trip"
+  if(want === "summary") return summaryContext ? "summary" : "home"
+  if(want === "signin" || want === "trip") return "home"
+  return PAGES.indexOf(want) >= 0 ? want : "home"
 }
-function expandDriverCard(){
-  if(running) return                 /* ID cannot be changed mid trip */
-  driverExpanded.style.display = "block"
-  driverNameDisplay.className  = ""
+
+function navigate(want){
+  const target = resolveRoute(want)
+  const h = "#/" + target
+  if(location.hash === h) renderPage(target)
+  else location.hash = h            /* hashchange drives renderPage */
 }
-function collapseDestCard(){
-  if(!destination) return
-  destExpanded.style.display = "none"
-  destSummary.style.display  = "block"
-  destSummary.innerHTML      = destination.label + "<span class='sub'>Tap to change</span>"
+
+function applyHash(){
+  const want = (location.hash || "").replace(/^#\/?/, "") || "home"
+  const target = resolveRoute(want)
+  if(location.hash !== "#/" + target){ location.hash = "#/" + target; return }
+  renderPage(target)
 }
-function expandDestCard(){
-  destExpanded.style.display = "block"
-  destSummary.style.display  = "none"
+
+function renderPage(name){
+  currentPage = name
+  for(const p of PAGES){
+    const el = $("page-" + p)
+    if(el) el.classList.toggle("active", p === name)
+  }
+
+  topBar.style.display = (name === "signin") ? "none" : "flex"
+
+  const showTabs   = (name !== "signin" && name !== "trip" && name !== "summary")
+  const showAction = (name === "home" || name === "trip")
+  tabBar.style.display    = showTabs   ? "flex"  : "none"
+  actionBar.style.display = showAction ? "block" : "none"
+  bottomDock.style.display = (showTabs || showAction) ? "block" : "none"
+
+  const tabs = tabBar.querySelectorAll("button")
+  for(const b of tabs) b.classList.toggle("on", b.dataset.route === name)
+
+  if(name === "home")     mountMap("mapHome")
+  if(name === "trip")     mountMap("mapTrip")
+  if(name === "history")  renderHistory()
+  if(name === "earnings") updateDashboard()
+  if(name === "settings") renderTariffTable()
+  if(name === "summary")  renderSummary()
+
+  window.scrollTo(0,0)
+  syncDockPadding()
 }
-function setDrivingView(on){
-  pageTitle.style.display     = on ? "none" : "block"
-  dashboardCard.style.display = on ? "none" : "block"
-  historyCard.style.display   = on ? "none" : "block"
-  if(on){ collapseDriverCard(); collapseDestCard() }
+
+/* The dock height changes with the mode, so the page bottom padding is measured
+   rather than guessed. Guessing is how the last card ends up under the buttons. */
+function syncDockPadding(){
+  requestAnimationFrame(()=>{
+    const h = bottomDock.offsetHeight || 0
+    document.body.style.paddingBottom = (h + 24) + "px"
+  })
 }
+
+/* One Leaflet instance, moved between hosts. Two instances would double the tile
+   traffic and desynchronise the route line. invalidateSize is mandatory after a
+   move or the map paints grey. */
+function mountMap(hostId){
+  const host = $(hostId)
+  if(!host) return
+  if(!host.contains(mapEl)) host.appendChild(mapEl)
+  setTimeout(()=>{ try{ map.invalidateSize() }catch(e){} }, 30)
+}
+
+window.addEventListener("hashchange", applyHash)
+window.addEventListener("resize", syncDockPadding)
+tabBar.addEventListener("click", e=>{
+  const btn = e.target.closest("button[data-route]")
+  if(btn) navigate(btn.dataset.route)
+})
 
 /* ---------- Driver ID ---------- */
 
@@ -294,11 +513,15 @@ function onIdInput(){
   if(raw.length > 2) raw = raw.slice(0,2)+"-"+raw.slice(2,7)
   driverInput.value = raw
   validatedDriverId = null; validatedDriverName = null
-  driverNameDisplay.style.display = "none"
   idStatus.innerText = ""
-  startBtn.disabled = true
-  startBtn.textContent = "Verify ID First"
-  expandDriverCard()
+  actionBtn.disabled = true
+  actionBtn.textContent = "Verify ID first"
+}
+
+function setDriverChip(){
+  whoami.innerHTML = validatedDriverName
+    ? validatedDriverName + "<span class='sub'>" + validatedDriverId + "</span>"
+    : "Not signed in"
 }
 
 /* ---------- Backend transport ---------- */
@@ -326,8 +549,10 @@ function describeNonJson(text){
 
 async function postToBackend(payload){
   let res, text
+  const body = Object.assign({}, payload)
+  if(sessionToken) body.token = sessionToken
   try{
-    res = await fetch(SYNC_URL,{method:"POST",body:JSON.stringify(payload)})
+    res = await fetch(SYNC_URL,{method:"POST",body:JSON.stringify(body)})
   }catch(netErr){
     const e = new Error("No response from the backend. Either the device is offline, or the deployment's access is not set to Anyone, which redirects to a sign-in page the app cannot read.")
     e.kind = "network"; throw e
@@ -364,11 +589,13 @@ async function validateId(){
     const json = await postToBackend({type:"validate",driverId:id})
     if(json.valid && json.active){
       validatedDriverId=id; validatedDriverName=json.name
-      driverNameDisplay.style.display="block"; driverNameDisplay.innerText="✓ "+json.name
-      idStatus.style.color="#34c759"; idStatus.innerText="ID verified"
-      startBtn.disabled=false; startBtn.textContent="Start Trip"
-      collapseDriverCard()
+      sessionToken = json.token || null
+      idStatus.style.color="#34c759"
+      idStatus.innerText = json.token ? "ID verified" : "ID verified (backend issued no session token)"
+      actionBtn.disabled=false; actionBtn.textContent="Start trip"
       localStorage.lastDriverId=id
+      setDriverChip()
+      navigate("home")
     } else if(json.valid && !json.active){
       idStatus.style.color="#ff3b30"; idStatus.innerText="⛔ "+(json.message||"Account suspended. Contact your manager."); lockApp()
     } else {
@@ -379,13 +606,42 @@ async function validateId(){
 }
 
 function lockApp(){
-  validatedDriverId=null; validatedDriverName=null
-  startBtn.disabled=true; startBtn.textContent="Verify ID First"
-  driverNameDisplay.style.display="none"
-  expandDriverCard()
+  validatedDriverId=null; validatedDriverName=null; sessionToken=null
+  actionBtn.disabled=true; actionBtn.textContent="Verify ID first"
+  setDriverChip()
+  navigate("signin")
+}
+
+function signOut(){
+  if(running){ alert("End the trip before signing out."); return }
+  validatedDriverId=null; validatedDriverName=null; sessionToken=null
+  actionBtn.disabled=true; actionBtn.textContent="Verify ID first"
+  idStatus.style.color="#999"; idStatus.innerText="Press Verify to sign back in"
+  setDriverChip()
+  navigate("signin")
+}
+
+async function healthCheck(){
+  healthStatus.style.color="#999"; healthStatus.innerText="Contacting the backend..."
+  try{
+    await postToBackend({type:"validate",driverId:validatedDriverId||"TX-00000"})
+    healthStatus.style.color="#34c759"
+    healthStatus.innerText="✓ Backend reachable and returning JSON."
+  }catch(err){ reportBackendError(healthStatus,err,"health check") }
 }
 
 /* ---------- Destination lookup ---------- */
+
+function collapseDestCard(){
+  if(!destination) return
+  destExpanded.style.display = "none"
+  destSummary.style.display  = "block"
+  destSummary.innerHTML      = destination.label + "<span class='sub'>Tap to change</span>"
+}
+function expandDestCard(){
+  destExpanded.style.display = "block"
+  destSummary.style.display  = "none"
+}
 
 let suggestTimer = null
 destInput.addEventListener("input",()=>{
@@ -434,14 +690,14 @@ async function lookupSuggestions(q){
   }catch(e){
     suggestions.innerHTML = ""
     destStatus.style.color="#ff9f0a"
-    destStatus.innerText = "Address lookup unavailable. Check connection."
+    destStatus.innerText = "Address lookup unavailable. Check the connection."
   }
 }
 
 function renderSuggestions(list){
   if(!list.length){ suggestions.innerHTML="<div class='sugg' style='color:#888'>No matches found</div>"; return }
   suggestions.innerHTML = ""
-  list.forEach((item,i)=>{
+  list.forEach(item=>{
     const div = document.createElement("div")
     div.className = "sugg"
     div.textContent = item.label
@@ -475,6 +731,7 @@ function clearDestination(){
   navSteps = []; routeCoords = []; currentStepIdx = 0; offRouteCount = 0; arrivalSpoken = false
   destInput.value = ""; suggestions.innerHTML = ""; destStatus.innerText = ""
   estimateBox.style.display = "none"
+  tripEst.style.display = "none"
   clearDestBtn.style.display = "none"
   expandDestCard()
   navBanner.style.display = "none"
@@ -505,15 +762,16 @@ async function buildRoute(isReroute){
 
   if(!isReroute){ destStatus.style.color="#999"; destStatus.innerText="Calculating route..." }
   try{
-    const res = await fetch(ORS_DIRECTIONS,{
-      method:"POST",
-      headers:{"Authorization":ORS_KEY,"Content-Type":"application/json"},
-      body:JSON.stringify({coordinates:[[origin.lng,origin.lat],[destination.lng,destination.lat]],instructions:true,units:"m"})
+    const reply = await postToBackend({
+      type:"route",
+      from:{lat:origin.lat, lng:origin.lng},
+      to:{lat:destination.lat, lng:destination.lng}
     })
-    if(!res.ok) throw "HTTP "+res.status
-    const j = await res.json()
+    if(reply.status !== "ok" || !reply.route)
+      throw new Error(reply.message || "The backend has no route handler yet. Add the proxy to the Apps Script project and redeploy.")
+    const j = reply.route
     const feat = j.features && j.features[0]
-    if(!feat) throw "No route returned"
+    if(!feat) throw new Error("The routing service returned no route for those two points.")
     const seg = feat.properties.segments[0]
 
     routeCoords = feat.geometry.coordinates.map(c=>[c[1],c[0]])
@@ -528,8 +786,10 @@ async function buildRoute(isReroute){
     showEstimate(seg.distance, seg.duration, isReroute)
     destStatus.innerText = ""
   }catch(e){
+    console.error("[taxi] route lookup failed:", e)
     destStatus.style.color="#ff3b30"
-    destStatus.innerText = "Route lookup failed ("+e+"). The meter still works normally."
+    destStatus.innerText = "Route lookup failed: " + (e && e.message ? e.message : e) +
+      " The meter still works normally."
   }
 }
 
@@ -538,7 +798,10 @@ function drawRoute(){
   if(destMarker) map.removeLayer(destMarker)
   routeLine = L.polyline(routeCoords,{color:"#0a84ff",weight:5,opacity:0.65,dashArray:"8,8"}).addTo(map)
   destMarker = L.marker([destination.lat,destination.lng]).addTo(map).bindPopup(destination.label)
-  if(!running) map.fitBounds(routeLine.getBounds(),{padding:[30,30]})
+  if(!running){
+    map.invalidateSize()
+    map.fitBounds(routeLine.getBounds(),{padding:[30,30]})
+  }
 }
 
 function estimateFare(distM,durS,tariff){
@@ -569,6 +832,13 @@ function showEstimate(distM,durS,isReroute){
     "<div class='estFare'>£"+low.toFixed(2)+" to £"+high.toFixed(2)+"</div>"+
     "<div class='estLine'>Based on the "+currentTariff+" tariff</div>"+
     "<div class='estNote'>Guide price only. The meter reading is the amount charged. Traffic and waiting time can push the fare above this range.</div>"
+
+  /* The estimate box lives on Home, which the driver cannot see mid trip,
+     so a one line version rides along on the meter page. */
+  if(running){
+    tripEst.style.display = "block"
+    tripEst.innerText = miles+" mi left, about "+mins+" min · guide £"+low.toFixed(2)+" to £"+high.toFixed(2)
+  }
 }
 
 /* ---------- Navigation guidance ---------- */
@@ -784,7 +1054,7 @@ function saveTripState(){
   if(!running) return
   localStorage.activeTripState=JSON.stringify({
     running,distance,elapsed,accumulatedFare,currentTariff,startCoord,lastPos,
-    distanceAccumulator,timeAccumulator,tripStartTime,validatedDriverId,validatedDriverName,
+    distanceAccumulator,timeAccumulator,tripStartTime,validatedDriverId,validatedDriverName,sessionToken,
     destination,quoted,gapDistanceTotal,gapEventCount,lastMovementAt,savedAt:Date.now()
   })
 }
@@ -799,6 +1069,7 @@ function restoreTripState(){
     startCoord=s.startCoord||null; lastPos=s.lastPos||null
     distanceAccumulator=s.distanceAccumulator||0; timeAccumulator=s.timeAccumulator||0
     tripStartTime=s.tripStartTime||null; validatedDriverId=s.validatedDriverId||null; validatedDriverName=s.validatedDriverName||null
+    sessionToken=s.sessionToken||null
     destination=s.destination||null; quoted=s.quoted||null
     gapDistanceTotal=s.gapDistanceTotal||0; gapEventCount=s.gapEventCount||0
     lastMovementAt=s.lastMovementAt||0; idlePromptAt=0
@@ -817,6 +1088,7 @@ document.addEventListener("visibilitychange",()=>{
   if(document.visibilityState==="visible"){
     if(wakeLock!==null) keepScreenAwake()
     if(running) tickOnce()
+    if(currentPage==="home" || currentPage==="trip") mountMap(currentPage==="trip"?"mapTrip":"mapHome")
   }
 })
 
@@ -850,14 +1122,24 @@ function updateTariff(){
   else if(hour<6||hour>=21){ activeTariff=TARIFFS.Night;currentTariff="Night";tariffElem.innerText="Night";tariffElem.style.background="#2c1f4a";tariffElem.style.color="#bf9fff" }
   else { activeTariff=TARIFFS.Day;currentTariff="Day";tariffElem.innerText="Day";tariffElem.style.background="#333";tariffElem.style.color="#fff" }
 }
-updateTariff()
+
+function renderTariffTable(){
+  let rows = ""
+  for(const k of Object.keys(TARIFFS)){
+    const t = TARIFFS[k]
+    rows += "<tr><td>"+k+(k===currentTariff?" ●":"")+"</td><td>£"+t.base.toFixed(2)+"</td><td>£"+t.tickValue.toFixed(2)+
+            "</td><td>"+t.distStep1.toFixed(1)+"</td><td>"+t.distStep2.toFixed(1)+"</td></tr>"
+  }
+  tariffTable.innerHTML =
+    "<table class='tt'><tr><th>Band</th><th>Flag</th><th>Tick</th><th>Step 1 (m)</th><th>Step 2 (m)</th></tr>"+rows+"</table>"
+}
 
 /* ---------- GPS ---------- */
 
 function onPosition(p){
   const lat=p.coords.latitude, lng=p.coords.longitude
   speed = p.coords.speed ? p.coords.speed*3.6 : 0
-  gps.innerText = "GPS active"
+  setGps("active")
   if(!startCoord && running) startCoord={lat,lng}
 
   if(pendingGap) resolveGapWithFix(lat,lng)
@@ -881,27 +1163,33 @@ function onPosition(p){
 function startWatch(){
   watch = navigator.geolocation.watchPosition(
     onPosition,
-    ()=>{ gps.innerText="GPS error" },
+    ()=>{ setGps("error") },
     {enableHighAccuracy:true,maximumAge:2000,timeout:20000}
   )
+}
+
+function getDistance(a,b,c,d){
+  const R=6371000,p1=a*Math.PI/180,p2=c*Math.PI/180,dp=(c-a)*Math.PI/180,dl=(d-b)*Math.PI/180
+  const x=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x))
 }
 
 /* ---------- Trip control ---------- */
 
 async function startTrip(){
-  if(!validatedDriverId){ alert("Please verify your Driver ID before starting a trip."); driverInput.focus(); return }
+  if(!validatedDriverId){ alert("Verify your Driver ID before starting a trip."); navigate("signin"); driverInput.focus(); return }
 
-  startBtn.disabled=true; startBtn.textContent="Checking..."
+  actionBtn.disabled=true; actionBtn.textContent="Checking..."
   try{
     const json = await postToBackend({type:"validate",driverId:validatedDriverId})
     if(!json.valid || !json.active){
       idStatus.style.color="#ff3b30"
       idStatus.innerText="⛔ "+(json.message||"Account suspended. Contact your manager.")
-      startBtn.disabled=true; startBtn.textContent="Verify ID First"
       lockApp(); return
     }
+    if(json.token) sessionToken = json.token   /* fresh 12 hours from the start of the job */
   } catch(err){
-    startBtn.disabled=false; startBtn.textContent="Start Trip"
+    actionBtn.disabled=false; actionBtn.textContent="Start trip"
     reportBackendError(idStatus,err,"pre-trip validate")
     alert("Cannot start the trip.\n\n"+(err && err.message ? err.message : "Unknown error"))
     return
@@ -915,8 +1203,9 @@ async function startTrip(){
   lastMovementAt=Date.now(); idlePromptAt=0
   arrivalSpoken=false
   keepScreenAwake()
-  startBtn.textContent="Stop Trip"; startBtn.className="stop"; startBtn.disabled=false; resetBtn.disabled=true
-  setDrivingView(true)
+  actionBtn.textContent="Stop trip"; actionBtn.className="stop"; actionBtn.disabled=false
+  resetBtn.disabled=true
+  navigate("trip")
   speakFare("Trip started")
   timer=setInterval(tickOnce,1000)
   if(watch) navigator.geolocation.clearWatch(watch)
@@ -932,29 +1221,17 @@ function stopTrip(){
   if(watch){ navigator.geolocation.clearWatch(watch); watch=null }
   if(wakeLock){ wakeLock.release(); wakeLock=null }
   clearTripState(); endCoord=lastPos
-  startBtn.textContent="Start Trip"; startBtn.className="start"; resetBtn.disabled=false
-  navBanner.style.display="none"; hideIdlePrompt(); setDrivingView(false)
+  actionBtn.textContent="Start trip"; actionBtn.className="start"; resetBtn.disabled=false
+  navBanner.style.display="none"; hideIdlePrompt()
   speakFare("Trip complete. Total fare is "+totalStr+" pounds")
-  saveTrip(totalStr); showReceipt(miles,duration,totalStr); update(); resetTrip()
-}
 
-function showReceipt(miles,duration,totalStr){
-  let receipt="Taxi Receipt\n\nDriver: "+validatedDriverName+"\nID: "+validatedDriverId+
-    "\nDistance: "+miles+" mi\nTime: "+duration+"\nFare: £"+totalStr+"\nTariff: "+currentTariff
-  if(destination) receipt+="\nDestination: "+destination.label
-  if(quoted) receipt+="\nQuoted range: £"+quoted.low.toFixed(2)+" to £"+quoted.high.toFixed(2)
-  if(gapDistanceTotal>0) receipt+="\nEstimated distance while backgrounded: "+toMiles(gapDistanceTotal)+" mi"
-  receipt+="\nStart: "+(startCoord?"https://maps.google.com/?q="+startCoord.lat+","+startCoord.lng:"N/A")+
-    "\nEnd: "+(endCoord?"https://maps.google.com/?q="+endCoord.lat+","+endCoord.lng:"N/A")+
-    "\nDate: "+localTimestamp()
-  alert(receipt); shareReceipt(receipt)
-}
-async function shareReceipt(receipt){
-  try{ if(navigator.share){await navigator.share({title:"Taxi Receipt",text:receipt});return} throw "noShare" }
-  catch(e){
-    try{ await navigator.clipboard.writeText(receipt); alert("Receipt copied to clipboard.") }
-    catch(e2){ let b=new Blob([receipt],{type:"text/plain"}),l=document.createElement("a"); l.href=URL.createObjectURL(b); l.download="taxi_receipt.txt"; l.click() }
-  }
+  const rec = saveTrip(totalStr)
+  update()
+  /* The trip stays loaded until Done is pressed, so the summary can be re-read
+     instead of vanishing with a dismissed alert. */
+  summaryContext = {mode:"live", trip:rec, text:receiptText(rec)}
+  navigate("summary")
+  startWatch()   /* idle watch resumes so the next job can be priced */
 }
 
 function resetTrip(){
@@ -966,38 +1243,136 @@ function resetTrip(){
   update()
 }
 
-function getDistance(a,b,c,d){
-  const R=6371000,p1=a*Math.PI/180,p2=c*Math.PI/180,dp=(c-a)*Math.PI/180,dl=(d-b)*Math.PI/180
-  const x=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2
-  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x))
+/* ---------- Summary and receipt ---------- */
+
+function receiptText(t){
+  let r = "Taxi Receipt\n\nDriver: "+(t.driverName||"")+"\nID: "+(t.driverId||"")+
+    "\nDistance: "+t.miles+" mi\nTime: "+t.time+"\nFare: £"+Number(t.fare).toFixed(2)+
+    "\nTariff: "+(t.tariff||"Day")
+  if(t.destination) r += "\nDestination: "+t.destination
+  if(t.quotedLow !== "" && t.quotedLow !== undefined && t.quotedLow !== null)
+    r += "\nQuoted range: £"+Number(t.quotedLow).toFixed(2)+" to £"+Number(t.quotedHigh).toFixed(2)
+  if(Number(t.estimatedMiles) > 0)
+    r += "\nEstimated distance while backgrounded: "+t.estimatedMiles+" mi"
+  r += "\nStart: "+(t.start?"https://maps.google.com/?q="+t.start.lat+","+t.start.lng:"N/A")+
+       "\nEnd: "  +(t.end  ?"https://maps.google.com/?q="+t.end.lat  +","+t.end.lng  :"N/A")+
+       "\nDate: "+t.date
+  return r
+}
+
+function renderSummary(){
+  if(!summaryContext) return
+  const t = summaryContext.trip
+  const live = summaryContext.mode === "live"
+
+  summaryTitle.innerText   = live ? "Trip complete" : "Past trip"
+  summaryFare.innerText    = "£"+Number(t.fare).toFixed(2)
+  summarySub.innerText     = t.date
+  summaryDoneBtn.innerText = live ? "Done" : "Back to history"
+
+  let rows =
+    "<div class='row'><span>Distance</span><span>"+t.miles+" mi</span></div>"+
+    "<div class='row'><span>Time</span><span>"+t.time+"</span></div>"+
+    "<div class='row'><span>Tariff</span><span>"+(t.tariff||"Day")+"</span></div>"
+  if(t.destination) rows += "<div class='row sm'><span>Destination</span><span>"+t.destination+"</span></div>"
+  if(t.quotedLow !== "" && t.quotedLow !== undefined && t.quotedLow !== null)
+    rows += "<div class='row sm'><span>Quoted</span><span>£"+Number(t.quotedLow).toFixed(2)+" to £"+Number(t.quotedHigh).toFixed(2)+"</span></div>"
+  rows += "<div class='row sm'><span>Office sync</span><span>"+(t.synced?"Synced":"Not synced yet")+"</span></div>"
+  summaryRows.innerHTML = rows
+
+  if(Number(t.estimatedMiles) > 0){
+    summaryWarn.style.display = "block"
+    summaryWarn.innerText = "⚠ "+t.estimatedMiles+" mi of this trip was estimated while the app was in the background ("+
+      (t.gapEvents||0)+" gap"+((t.gapEvents===1)?"":"s")+")."
+  } else summaryWarn.style.display = "none"
+
+  receiptTextEl.innerText = summaryContext.text
+  shareStatus.innerText = ""
+}
+
+function summaryDone(){
+  const live = summaryContext && summaryContext.mode === "live"
+  summaryContext = null
+  if(live){ resetTrip(); navigate("home") }
+  else navigate("history")
+}
+
+async function shareCurrentReceipt(){
+  if(!summaryContext) return
+  const text = summaryContext.text
+  try{
+    if(navigator.share){ await navigator.share({title:"Taxi Receipt",text}); return }
+    throw "noShare"
+  }catch(e){
+    if(e && e.name === "AbortError") return
+    copyCurrentReceipt()
+  }
+}
+
+async function copyCurrentReceipt(){
+  if(!summaryContext) return
+  const text = summaryContext.text
+  try{
+    await navigator.clipboard.writeText(text)
+    shareStatus.style.color="#34c759"; shareStatus.innerText="Receipt copied."
+  }catch(e){
+    const b=new Blob([text],{type:"text/plain"}), l=document.createElement("a")
+    l.href=URL.createObjectURL(b); l.download="taxi_receipt.txt"; l.click()
+    shareStatus.style.color="#999"; shareStatus.innerText="Receipt downloaded as a text file."
+  }
 }
 
 /* ---------- Records ---------- */
 
 function saveTrip(total){
   let trips=JSON.parse(localStorage.trips||"[]")
-  const tripId=crypto.randomUUID()
-  trips.unshift({
-    tripId,fare:Number(total),miles:toMiles(distance),time:formatTime(elapsed),date:localTimestamp(),
+  const rec = {
+    tripId:crypto.randomUUID(),fare:Number(total),miles:toMiles(distance),time:formatTime(elapsed),date:localTimestamp(),
     tariff:currentTariff,start:startCoord,end:endCoord,
     destination:destination?destination.label:"",
     destLat:destination?destination.lat:"",destLng:destination?destination.lng:"",
     quotedLow:quoted?quoted.low:"",quotedHigh:quoted?quoted.high:"",quotedMiles:quoted?quoted.miles:"",
     estimatedMiles:gapDistanceTotal>0?toMiles(gapDistanceTotal):"0.00",gapEvents:gapEventCount,
     driverId:validatedDriverId,driverName:validatedDriverName,synced:false
-  })
+  }
+  trips.unshift(rec)
   localStorage.trips=JSON.stringify(trips); renderHistory(); updateDashboard()
+  return rec
 }
 
 function renderHistory(){
-  let trips=JSON.parse(localStorage.trips||"[]"), html=""
-  trips.slice(0,5).forEach(t=>{
-    let dist=t.miles||(t.km?(t.km*0.621371).toFixed(2):"0.00")
-    let badge=t.synced?'<span style="color:#34c759;font-size:12px"> ✓ synced</span>':'<span style="color:#ff9f0a;font-size:12px"> ● unsynced</span>'
-    let dest=t.destination?'<br><span style="color:#888;font-size:13px">to '+t.destination+'</span>':''
-    html+=`<div class="history">£${Number(t.fare).toFixed(2)} • ${dist} mi • ${t.time} • ${t.tariff||"Day"}${badge}${dest}<br>${t.date}</div>`
+  const trips=JSON.parse(localStorage.trips||"[]")
+  if(!trips.length){
+    historyDiv.innerHTML="<div class='empty'>No trips recorded yet. Finished trips appear here with their receipt.</div>"
+    return
+  }
+  let html=""
+  trips.slice(0,200).forEach(t=>{
+    const dist=t.miles||(t.km?(t.km*0.621371).toFixed(2):"0.00")
+    const badge=t.synced
+      ? "<span style='color:#34c759;font-size:12px'>✓ synced</span>"
+      : "<span style='color:#ff9f0a;font-size:12px'>● unsynced</span>"
+    const dest=t.destination?" → "+t.destination:""
+    html+="<div class='history' data-trip='"+t.tripId+"'>"+
+            "<span class='chev'>›</span>"+
+            "<div class='line1'>£"+Number(t.fare).toFixed(2)+" · "+dist+" mi · "+t.time+"</div>"+
+            "<div class='line2'>"+t.date+" · "+(t.tariff||"Day")+" "+badge+dest+"</div>"+
+          "</div>"
   })
-  historyDiv.innerHTML=html||"<div style='color:#666'>No trips yet</div>"
+  historyDiv.innerHTML=html
+}
+
+historyDiv.addEventListener("click",e=>{
+  const row = e.target.closest("[data-trip]")
+  if(row) openPastReceipt(row.dataset.trip)
+})
+
+function openPastReceipt(tripId){
+  const trips=JSON.parse(localStorage.trips||"[]")
+  const t=trips.filter(x=>x.tripId===tripId)[0]
+  if(!t) return
+  summaryContext={mode:"past",trip:t,text:receiptText(t)}
+  navigate("summary")
 }
 
 function csvSafe(v){
@@ -1007,7 +1382,7 @@ function csvSafe(v){
 
 function exportTrips(){
   let trips=JSON.parse(localStorage.trips||"[]")
-  if(!trips.length){ alert("No trips"); return }
+  if(!trips.length){ syncStatus.style.color="#999"; syncStatus.innerText="Nothing to export yet."; return }
   let csv="Driver ID,Driver Name,Date,Time,Duration,Fare (£),Tariff,Destination,Quoted Low (£),Quoted High (£),Quoted Miles,Estimated Miles,Gap Events,Start Coords,End Coords,Trip ID\n"
   trips.forEach(t=>{
     let s=t.start?t.start.lat+" "+t.start.lng:"N/A", e=t.end?t.end.lat+" "+t.end.lng:"N/A"
@@ -1027,24 +1402,34 @@ function updateDashboard(){
   })
   let avg=trips.length?life/trips.length:0
   todayEarnElem.innerText=todayEarn.toFixed(2); weekEarnElem.innerText=week.toFixed(2)
-  monthEarnElem.innerText=month.toFixed(2); lifeEarnElem.innerText=life.toFixed(2); avgFareElem.innerText=avg.toFixed(2)
+  monthEarnElem.innerText=month.toFixed(2); lifeEarnElem.innerText=life.toFixed(2)
+  avgFareElem.innerText=avg.toFixed(2); tripCountElem.innerText=trips.length
 }
 
 async function syncToSheet(){
-  if(!validatedDriverId){ alert("Please verify your Driver ID before syncing."); driverInput.focus(); return }
+  if(!validatedDriverId){ alert("Verify your Driver ID before syncing."); navigate("signin"); return }
   let trips=JSON.parse(localStorage.trips||"[]"), unsynced=trips.filter(t=>!t.synced)
   if(!unsynced.length){ syncStatus.style.color="#34c759"; syncStatus.innerText="✓ All trips already synced."; return }
   syncBtn.disabled=true; syncStatus.style.color="#999"; syncStatus.innerText="Syncing "+unsynced.length+" trip(s)..."
   try{
     const json = await postToBackend({type:"sync",driverId:validatedDriverId,driverName:validatedDriverName,trips:unsynced})
     if(json.status==="ok"){
-      const syncedIds=new Set(unsynced.map(t=>t.tripId))
-      trips=trips.map(t=>syncedIds.has(t.tripId)?{...t,synced:true}:t)
+      /* Mark only what the sheet actually took. A trip the backend rejected is
+         NOT on the sheet, so marking it synced would delete it from the only
+         other place it exists. Rejected trips stay queued for the next attempt. */
+      const accepted = Array.isArray(json.syncedIds) ? new Set(json.syncedIds) : null
+      trips = trips.map(t=>{
+        if(!accepted)  return {...t,synced:true}   /* older backend, no per-trip detail */
+        if(!t.tripId)  return {...t,synced:true}   /* legacy record with no ID to match on */
+        return accepted.has(t.tripId) ? {...t,synced:true} : t
+      })
       localStorage.trips=JSON.stringify(trips); renderHistory()
       let msg="✓ Synced "+json.inserted+" trip(s) at "+localTimestamp()
       if(json.skipped>0) msg+=" ("+json.skipped+" duplicate(s) skipped)"
-      if(json.errors&&json.errors.length) msg+=" | Errors: "+json.errors.join("; ")
-      syncStatus.style.color="#34c759"; syncStatus.innerText=msg
+      if(json.errors&&json.errors.length)
+        msg+=" | "+json.errors.length+" rejected and still queued: "+json.errors.join("; ")
+      syncStatus.style.color = (json.errors&&json.errors.length) ? "#ff9f0a" : "#34c759"
+      syncStatus.innerText=msg
     } else throw new Error(json.message||"Backend rejected the sync without giving a reason")
   }catch(err){
     console.error("[taxi] sync failed:",err,err && err.body ? err.body.slice(0,1000) : "")
@@ -1063,10 +1448,18 @@ function notifyOwner(driverId,driverName,action){
 
 /* ---------- Boot ---------- */
 
-startBtn.onclick=function(){ running?stopTrip():startTrip() }
-resetBtn.onclick=resetTrip
+actionBtn.onclick = function(){
+  if(running) stopTrip()
+  else if(currentPage === "home") startTrip()
+}
+resetBtn.onclick = function(){
+  if(running) return
+  resetTrip()
+  navigate("home")
+}
 
 updateTariff()
+setDriverChip()
 
 if(localStorage.lastDriverId){
   driverInput.value=localStorage.lastDriverId
@@ -1074,22 +1467,28 @@ if(localStorage.lastDriverId){
 }
 
 const wasRunning=restoreTripState()
-if(wasRunning&&validatedDriverId){
-  running=true; startBtn.textContent="Stop Trip"; startBtn.className="stop"; startBtn.disabled=false; resetBtn.disabled=true
-  driverInput.value=validatedDriverId; driverNameDisplay.style.display="block"; driverNameDisplay.innerText="✓ "+validatedDriverName
-  idStatus.style.color="#34c759"; idStatus.innerText="Trip in progress"; gps.innerText="Resuming trip..."
-  setDrivingView(true)
-  if(destination){ destInput.value=destination.label; clearDestBtn.style.display="block"; buildRoute(true) }
+if(wasRunning && validatedDriverId){
+  running=true
+  actionBtn.textContent="Stop trip"; actionBtn.className="stop"; actionBtn.disabled=false
+  resetBtn.disabled=true
+  setDriverChip()
+  driverInput.value=validatedDriverId
+  idStatus.style.color="#34c759"; idStatus.innerText="Trip in progress"
+  setGps("resuming...")
+  if(destination){ destInput.value=destination.label; clearDestBtn.style.display="block"; collapseDestCard() }
   keepScreenAwake()
   lastTickWall=Date.now()
   timer=setInterval(tickOnce,1000)
   startWatch()
+  navigate("trip")
+  if(destination) buildRoute(true)
 } else {
   accumulatedFare=activeTariff.base
   startWatch()   /* idle watch so a destination can be priced before the trip starts */
+  applyHash()    /* a reload keeps the page the driver was on, guards permitting */
 }
 
-update(); renderHistory(); updateDashboard()
+update(); renderHistory(); updateDashboard(); renderTariffTable()
 </script>
 
 </body>
