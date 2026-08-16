@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b0b0b">
-<meta name="color-scheme" content="dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.json">
@@ -18,20 +17,65 @@
       onerror="window.__noMap=1">
 <style>
 :root{
-  --bg:#0b0b0b; --card:#1c1c1e; --field:#2c2c2e; --line:#3a3a3c;
+  /* ── Dark, the default. Every colour in the app is named here and nowhere
+        else, so a theme is a swap of this block rather than a hunt through the
+        stylesheet. Both themes are checked numerically against WCAG AA. ── */
+  --bg:#0b0b0b; --card:#1c1c1e; --field:#2c2c2e; --surface2:#141416; --line:#3a3a3c;
+  --ink:#ffffff; --ink2:#a8a8ad; --dim:#98989e; --faint:#8e8e93;
+  --chrome:rgba(11,11,11,0.94); --chromeLine:#2a2a2a; --scrim:rgba(0,0,0,.72);
+
   --blue:#0a84ff; --blueDeep:#0a6fd6; --red:#ff3b30; --redDeep:#e0271d;
-  --green:#34c759; --amber:#ff9f0a;
-  --fare:#FFD60A; --dim:#98989e; --faint:#8e8e93;
+  --green:#34c759; --greenDeep:#2b9e4b; --amber:#ff9f0a; --amberDeep:#b46e00;
+  --fare:#FFD60A; --focusRing:#ffffff;
+
+  --infoBg:#0a2a4a;   --infoLine:#0a84ff; --infoInk:#7cc0ff; --infoInk2:#dbe9f7; --infoInk3:#9cc2e0;
+  --warnBg:#3a2a0a;   --warnLine:#ff9f0a; --warnInk:#ffcf7a;
+  --dangerBg:#3a1210; --dangerLine:#ff3b30; --dangerInk:#ffb0aa;
+  --goodBg:#12251a;   --goodLine:#34c759; --goodInk:#5fd97f; --goodInk2:#a9e5bf; --goodInk3:#8fb59b;
+  --peakBg:#2c1f4a;   --peakLine:#bf9fff; --peakInk:#d6c2ff;
+
+  --btnNeutral:#3a3a3c; --btnNeutralInk:#ffffff;
+  --ghostLine:#6a6a6e;  --ghostInk:#e6e6e8;
+  --disabledBg:#2a2a2c; --disabledInk:#8e8e93;
+  --badgeOk:#4ad07a; --badgeWait:#ffb340; --badgeBad:#ff6b61;
+  --statusBad:#ff6b61;
+  --tileFilter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.9);
+
   --dockZ:1200; --barZ:1100;
 }
+
+/* ── Light. A black screen is a mirror: on a dash mount in daylight it reflects
+      the windscreen and the driver reads their own dashboard instead of the
+      fare. Amber on white is 1.4:1 and unusable, so the fare goes deep amber. ── */
+[data-theme="light"]{
+  --bg:#f2f2f7; --card:#ffffff; --field:#e9e9ee; --surface2:#f7f7fa; --line:#c9c9d0;
+  --ink:#0b0b0c; --ink2:#3a3a40; --dim:#55555c; --faint:#6a6a72;
+  --chrome:rgba(242,242,247,0.94); --chromeLine:#d5d5db; --scrim:rgba(0,0,0,.42);
+
+  --fare:#8A5600; --focusRing:#0b0b0c;
+
+  --infoBg:#e6f0fd;   --infoLine:#0a6fd6; --infoInk:#0a4f9c; --infoInk2:#123f70; --infoInk3:#2b5f96;
+  --warnBg:#fff3df;   --warnLine:#b46e00; --warnInk:#7a4a00;
+  --dangerBg:#fdebe9; --dangerLine:#c02318; --dangerInk:#9e1c14;
+  --goodBg:#e4f6eb;   --goodLine:#2b9e4b; --goodInk:#166534; --goodInk2:#0f5128; --goodInk3:#3d7a56;
+  --peakBg:#efe8ff;   --peakLine:#6d4fc4; --peakInk:#4c2f9e;
+
+  --btnNeutral:#dcdce2; --btnNeutralInk:#101014;
+  --ghostLine:#8c8c94;  --ghostInk:#1c1c20;
+  --disabledBg:#e2e2e8; --disabledInk:#71717a;
+  --badgeOk:#12703a; --badgeWait:#7a4a00; --badgeBad:#9e1c14;
+  --statusBad:#9e1c14;
+  --tileFilter:none;
+}
+
 *{-webkit-tap-highlight-color:transparent;box-sizing:border-box}
 /* Any id or class rule that sets `display` outranks the user agent's
    [hidden]{display:none}, which would make show()/hidden silently no-op on
    #topBar, #tabBar and .collapsedStrip. This settles it once. */
 [hidden]{display:none!important}
-html{-webkit-text-size-adjust:100%}
+html{-webkit-text-size-adjust:100%;background:var(--bg)}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
-  background:var(--bg);color:#fff;margin:0;
+  background:var(--bg);color:var(--ink);margin:0;
   padding:0 calc(20px + env(safe-area-inset-left)) 160px calc(20px + env(safe-area-inset-right))}
 
 .srOnly{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
@@ -42,22 +86,25 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-s
   justify-content:space-between;gap:12px;
   padding:calc(12px + env(safe-area-inset-top)) 20px 12px 20px;
   margin:0 calc(-20px - env(safe-area-inset-left)) 8px calc(-20px - env(safe-area-inset-right));
-  background:rgba(11,11,11,0.94);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
-#whoami{font-size:16px;color:var(--green);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  background:var(--chrome);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+#whoami{font-size:16px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #whoami .sub{display:block;font-size:12px;color:var(--dim)}
-#tariff{font-size:14px;font-weight:700;padding:6px 14px;border-radius:999px;background:#333;color:#fff;flex:none}
+#tariff{font-size:14px;font-weight:700;padding:6px 14px;border-radius:999px;flex:none;
+  background:var(--btnNeutral);color:var(--btnNeutralInk)}
+#tariff.band-Night,#tariff.band-Peak{background:var(--peakBg);color:var(--peakInk)}
+#tariff.band-Extra{background:var(--dangerBg);color:var(--dangerInk)}
 
 #bottomDock{position:fixed;left:0;right:0;bottom:0;z-index:var(--dockZ);
-  background:rgba(11,11,11,0.96);border-top:1px solid #2a2a2a;
+  background:var(--chrome);border-top:1px solid var(--chromeLine);
   -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
   padding-bottom:env(safe-area-inset-bottom)}
 #actionBar{padding:12px calc(20px + env(safe-area-inset-left)) 12px calc(20px + env(safe-area-inset-right))}
 #actionBar button{margin-top:0}
-#tabBar{display:flex;border-top:1px solid #2a2a2a}
+#tabBar{display:flex;border-top:1px solid var(--chromeLine)}
 #tabBar button{flex:1;width:auto;margin:0;padding:8px 4px 12px 4px;background:none;border-radius:0;
   color:var(--dim);font-size:12px;font-weight:600;line-height:1.5;border-top:3px solid transparent}
 #tabBar button .ic{display:block;font-size:20px;line-height:1.1}
-#tabBar button.on{color:var(--blue);border-top-color:var(--blue)}
+#tabBar button.on{color:var(--blueDeep);border-top-color:var(--blueDeep)}
 
 /* ---------- Pages ---------- */
 .page{display:none}
@@ -75,32 +122,41 @@ h3{margin-top:0}
 
 button{width:100%;padding:16px;font-size:20px;font-weight:700;border:none;border-radius:12px;
   margin-top:10px;cursor:pointer;font-family:inherit}
-button:active{filter:brightness(1.25);transform:scale(.985)}
+button:active{filter:brightness(1.18);transform:scale(.985)}
 button:focus-visible,input:focus-visible,select:focus-visible{
-  outline:3px solid #fff;outline-offset:2px;box-shadow:0 0 0 6px rgba(10,132,255,.65)}
+  outline:3px solid var(--focusRing);outline-offset:2px;box-shadow:0 0 0 6px rgba(10,132,255,.65)}
+/* Page headings are given focus programmatically on navigation so a screen
+   reader announces the new page. They are not in the tab order, so the browser's
+   focus ring around them is pure noise — it renders as a stray box on every
+   page. Suppressed for tabindex="-1" only, which never affects a keyboard user. */
+[tabindex="-1"]:focus{outline:none}
+/* Placeholder text is instructional — "TX-A7K3M" tells the driver the format —
+   so it is held to normal text contrast rather than the browser's default grey. */
+::placeholder{color:var(--dim);opacity:1}
 .start{background:var(--blueDeep);color:#fff}
 .stop{background:var(--redDeep);color:#fff}
-.reset{background:#3a3a3c;color:#fff}
-.export{background:#2b9e4b;color:#fff}
-.sync{background:#b46e00;color:#fff}
-.ghost{background:none;border:1px solid #6a6a6e;color:#e6e6e8}
+.reset{background:var(--btnNeutral);color:var(--btnNeutralInk)}
+.export{background:var(--greenDeep);color:#fff}
+.sync{background:var(--amberDeep);color:#fff}
+.ghost{background:none;border:1px solid var(--ghostLine);color:var(--ghostInk)}
 .mini{width:auto;flex:1 1 auto;padding:12px 10px;font-size:15px;margin-top:0}
-button:disabled{background:#2a2a2c;color:var(--faint);cursor:not-allowed;filter:none;transform:none}
+button:disabled{background:var(--disabledBg);color:var(--disabledInk);cursor:not-allowed;filter:none;transform:none}
 
-.fieldLabel{font-size:15px;color:#a8a8ad;display:block;margin-bottom:6px}
+.fieldLabel{font-size:15px;color:var(--ink2);display:block;margin-bottom:6px}
 input,select{width:100%;padding:12px;font-size:18px;border-radius:10px;border:1px solid var(--line);
-  background:var(--field);color:#fff;margin-bottom:6px;font-family:inherit}
+  background:var(--field);color:var(--ink);margin-bottom:6px;font-family:inherit}
 #driverInput{text-align:center;letter-spacing:2px}
 .empty{color:var(--faint);padding:14px 0;font-size:15px}
-.warn{background:#3a2a0a;border-left:3px solid var(--amber);border-radius:10px;padding:10px;
-  font-size:14px;color:#ffcf7a;margin-top:10px}
-.warn.bad{background:#3a1210;border-left-color:var(--red);color:#ffb0aa}
+.warn{background:var(--warnBg);border-left:3px solid var(--warnLine);border-radius:10px;padding:10px;
+  font-size:14px;color:var(--warnInk);margin-top:10px}
+.warn.bad{background:var(--dangerBg);border-left-color:var(--dangerLine);color:var(--dangerInk)}
 .mapHost{height:min(260px,35vh);border-radius:12px;overflow:hidden}
 #map{height:100%;min-height:180px;border-radius:12px}
+.leaflet-tile-pane{filter:var(--tileFilter)}
 .mapDown{display:flex;align-items:center;justify-content:center;height:100%;
-  background:#141416;border-radius:12px;color:var(--faint);font-size:14px;text-align:center;padding:14px}
-.statusLine{font-size:14px;color:#a8a8ad;margin-top:10px;text-align:center;min-height:20px}
-.statusLine.ok{color:var(--green)} .statusLine.bad{color:#ff6b61} .statusLine.warn2{color:var(--amber)}
+  background:var(--surface2);border-radius:12px;color:var(--faint);font-size:14px;text-align:center;padding:14px}
+.statusLine{font-size:14px;color:var(--ink2);margin-top:10px;text-align:center;min-height:20px}
+.statusLine.ok{color:var(--goodInk)} .statusLine.bad{color:var(--statusBad)} .statusLine.warn2{color:var(--warnInk)}
 details.tech{margin-top:8px;font-size:12px;color:var(--faint);text-align:left}
 details.tech pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 0;font-size:11px}
 
@@ -112,54 +168,64 @@ details.tech pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 0;font
 #suggestions{background:var(--field);border-radius:10px;overflow:hidden auto;max-height:40vh;margin-bottom:6px}
 #suggestions:empty{display:none}
 .sugg{display:flex;align-items:center;width:100%;min-height:56px;margin:0;padding:16px 12px;
-  font-size:17px;font-weight:400;text-align:left;background:none;color:#fff;border:none;border-radius:0;
+  font-size:17px;font-weight:400;text-align:left;background:none;color:var(--ink);border:none;border-radius:0;
   border-bottom:1px solid var(--line)}
 .sugg:last-child{border-bottom:none}
-.sugg:active{background:#3a3a3c}
-.suggMsg{padding:14px 12px;font-size:15px;color:#a8a8ad}
-#estimateBox{margin-top:10px;padding:14px;background:#12251a;border-left:3px solid var(--green);border-radius:10px}
-.estLine{font-size:15px;color:#a9e5bf;margin:2px 0}
-.estFare{font-size:26px;font-weight:bold;color:#5fd97f;margin:6px 0}
-.estNote{font-size:13px;color:#8fb59b;margin-top:6px}
+.sugg:active{background:var(--btnNeutral)}
+.suggMsg{padding:14px 12px;font-size:15px;color:var(--ink2)}
+#estimateBox{margin-top:10px;padding:14px;background:var(--goodBg);border-left:3px solid var(--goodLine);border-radius:10px}
+.estLine{font-size:15px;color:var(--goodInk2);margin:2px 0}
+.estFare{font-size:26px;font-weight:bold;color:var(--goodInk);margin:6px 0}
+.estNote{font-size:13px;color:var(--goodInk3);margin-top:6px}
 .collapsedStrip{display:block;width:100%;text-align:left;margin:0;padding:14px 12px;background:var(--field);
-  border:none;border-left:3px solid var(--blue);border-radius:10px;font-size:16px;font-weight:400;color:#7cc0ff}
-.collapsedStrip .sub{display:block;font-size:13px;color:#a0a0a5;margin-top:3px}
+  border:none;border-left:3px solid var(--infoLine);border-radius:10px;font-size:16px;font-weight:400;color:var(--infoInk)}
+.collapsedStrip .sub{display:block;font-size:13px;color:var(--dim);margin-top:3px}
 
 /* ---------- Trip ---------- */
 .fareDisplay{position:sticky;top:calc(46px + env(safe-area-inset-top));z-index:800;
   text-align:center;background:var(--bg);
   margin:0 calc(-20px - env(safe-area-inset-left)) 12px calc(-20px - env(safe-area-inset-right));
-  padding:6px 20px 10px;border-bottom:1px solid #232325}
-.fareLabel{font-size:16px;color:#a8a8ad;letter-spacing:2px}
+  padding:6px 20px 10px;border-bottom:1px solid var(--chromeLine)}
+.fareLabel{font-size:16px;color:var(--ink2);letter-spacing:2px}
 .fareValue{font-size:clamp(44px,17vw,72px);font-weight:bold;color:var(--fare);letter-spacing:3px;line-height:1.05}
-.fareExtra{font-size:15px;color:#a9e5bf;margin-top:2px;min-height:18px}
-#navBanner{background:#0a2a4a;border-left:3px solid var(--blue);border-radius:12px;padding:14px;margin-bottom:14px}
-#navDist{font-size:28px;font-weight:bold;color:#7cc0ff}
-#navText{font-size:18px;color:#dbe9f7;margin-top:4px}
-#navMeta{font-size:13px;color:#9cc2e0;margin-top:6px}
+.fareExtra{font-size:15px;color:var(--goodInk);margin-top:2px;min-height:18px}
+#navBanner{background:var(--infoBg);border-left:3px solid var(--infoLine);border-radius:12px;padding:14px;margin-bottom:14px}
+#navDist{font-size:28px;font-weight:bold;color:var(--infoInk)}
+#navText{font-size:18px;color:var(--infoInk2);margin-top:4px}
+#navMeta{font-size:13px;color:var(--infoInk3);margin-top:6px}
 #gpsBanner{border-radius:12px;padding:14px;margin-bottom:14px;font-size:17px;line-height:1.4;
-  background:#3a1210;border-left:3px solid var(--red);color:#ffb0aa}
-#idleBanner{background:#3a2a0a;border-left:3px solid var(--amber);border-radius:12px;padding:16px;margin-bottom:14px}
-#idleText{font-size:17px;color:#ffcf7a;line-height:1.4}
-#tripEst{font-size:14px;color:#a9e5bf;text-align:center;margin-bottom:14px}
-#agreedChip{background:#2c1f4a;border-left:3px solid #bf9fff;border-radius:12px;padding:12px 14px;
-  margin-bottom:14px;color:#d6c2ff;font-size:16px}
+  background:var(--dangerBg);border-left:3px solid var(--dangerLine);color:var(--dangerInk)}
+#idleBanner{background:var(--warnBg);border-left:3px solid var(--warnLine);border-radius:12px;padding:16px;margin-bottom:14px}
+#idleText{font-size:17px;color:var(--warnInk);line-height:1.4}
+#tripEst{font-size:14px;color:var(--goodInk);text-align:center;margin-bottom:14px}
+#agreedChip{background:var(--peakBg);border-left:3px solid var(--peakLine);border-radius:12px;padding:12px 14px;
+  margin-bottom:14px;color:var(--peakInk);font-size:16px}
 
 /* ---------- Extras ---------- */
 .extraRow{display:flex;justify-content:space-between;align-items:center;gap:12px;
   padding:10px 0;border-bottom:1px solid var(--line);font-size:16px}
 .extraRow:last-child{border-bottom:none}
-.extraRow button{width:auto;margin:0;padding:8px 12px;font-size:14px;background:#3a3a3c;color:#fff}
+.extraRow button{width:auto;margin:0;padding:8px 12px;font-size:14px;
+  background:var(--btnNeutral);color:var(--btnNeutralInk)}
 .btnRow{display:flex;gap:8px;margin-top:10px}
 #tollForm{margin-top:10px}
 
+/* ---------- Theme picker ---------- */
+#themePicker{display:flex;gap:8px}
+#themePicker button{flex:1;margin-top:0;padding:12px 6px;font-size:15px;
+  background:var(--field);color:var(--ink);border:1px solid var(--line)}
+#themePicker button[aria-pressed="true"]{background:var(--blueDeep);color:#fff;border-color:var(--blueDeep)}
+#themeNote{font-size:13px;color:var(--dim);line-height:1.5;margin:10px 0 0}
+
 /* ---------- Records ---------- */
-.history{display:block;width:100%;text-align:left;margin:0;padding:14px 4px;background:none;color:#fff;
+.history{display:block;width:100%;text-align:left;margin:0;padding:14px 4px;background:none;color:var(--ink);
   border:none;border-bottom:1px solid var(--line);border-radius:0;font-size:17px;font-weight:400}
 .history:last-child{border-bottom:none}
-.history:active{background:#242426}
+.history:active{background:var(--field)}
 .history .line1{font-size:17px}
 .history .line2{color:var(--dim);font-size:13px;margin-top:3px}
+.badge{font-size:12px;font-weight:600}
+.badge.ok{color:var(--badgeOk)} .badge.wait{color:var(--badgeWait)} .badge.bad{color:var(--badgeBad)}
 .bigStat{font-size:34px;font-weight:bold;color:var(--fare)}
 .statLabel{font-size:14px;color:var(--dim)}
 .ttWrap{overflow-x:auto}
@@ -167,25 +233,25 @@ details.tech pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 0;font
 .tt th,.tt td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
 .tt th{color:var(--dim);font-weight:600}
 #receiptText{white-space:pre-wrap;overflow-wrap:anywhere;font-family:ui-monospace,Menlo,monospace;
-  font-size:13px;color:#d0d0d4;background:#141416;padding:14px;border-radius:10px}
+  font-size:13px;color:var(--ink);background:var(--surface2);padding:14px;border-radius:10px}
 .summaryFare{text-align:center;font-size:clamp(38px,14vw,56px);font-weight:bold;color:var(--fare);margin:6px 0}
 .summarySub{text-align:center;color:var(--dim);font-size:15px;margin-bottom:6px}
 
 /* ---------- Confirm sheet ---------- */
-#sheetWrap{position:fixed;inset:0;z-index:2000;display:none;background:rgba(0,0,0,.72)}
+#sheetWrap{position:fixed;inset:0;z-index:2000;display:none;background:var(--scrim)}
 #sheetWrap.on{display:block}
-#sheet{position:absolute;left:0;right:0;bottom:0;background:#1c1c1e;border-radius:18px 18px 0 0;
+#sheet{position:absolute;left:0;right:0;bottom:0;background:var(--card);border-radius:18px 18px 0 0;
   padding:22px calc(20px + env(safe-area-inset-left)) calc(20px + env(safe-area-inset-bottom));
-  border-top:1px solid #3a3a3c}
-#sheetTitle{font-size:21px;font-weight:700;margin:0 0 8px}
-#sheetBody{font-size:16px;color:#c8c8cd;line-height:1.5;margin:0 0 6px;white-space:pre-line}
+  border-top:1px solid var(--line)}
+#sheetTitle{font-size:21px;font-weight:700;margin:0 0 8px;color:var(--ink)}
+#sheetBody{font-size:16px;color:var(--ink2);line-height:1.5;margin:0 0 6px;white-space:pre-line}
 
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}
   button:active{transform:none}}
 @media (prefers-contrast:more){
-  :root{--dim:#c4c4c9;--faint:#b0b0b5;--line:#6a6a6e}
-  .ghost{border-color:#9a9aa0}
-  .card{outline:1px solid #4a4a4e}
+  :root{--dim:#c4c4c9;--faint:#b0b0b5;--line:#6a6a6e;--ink2:#dcdce0}
+  [data-theme="light"]{--dim:#3a3a40;--faint:#45454b;--line:#8a8a92;--ink2:#1c1c20}
+  .card{outline:1px solid var(--line)}
 }
 @media (orientation:landscape) and (max-height:520px){
   .mapHost{height:150px}
@@ -386,6 +452,16 @@ details.tech pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 0;font
   <div class="card">
     <h3>Tariff reference</h3>
     <div id="tariffTable"></div>
+  </div>
+
+  <div class="card">
+    <h3>Display</h3>
+    <div id="themePicker" role="group" aria-label="Screen theme">
+      <button type="button" data-theme-choice="auto"  aria-pressed="false">Daylight</button>
+      <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
+      <button type="button" data-theme-choice="dark"  aria-pressed="false">Dark</button>
+    </div>
+    <p id="themeNote"></p>
   </div>
 
   <div class="card">
@@ -681,6 +757,111 @@ function setGps(state){
   if(changed && bad && running) speakNav("G P S signal lost")
 }
 
+/* ---------- Theme ----------
+
+   A black screen is a mirror. On a dash mount in daylight it reflects the
+   windscreen and the driver reads their own reflection instead of the fare;
+   at night a white one is a headlamp in the corner of their eye. The app
+   already computes the tariff from the clock, so it may as well know whether
+   the sun is up.
+
+   "Daylight" uses real sunrise and sunset for Liverpool rather than a fixed
+   pair of hours, because a fixed schedule is wrong for half the year here:
+   sunset runs from about 15:50 in December to 21:45 in June. NOAA's standard
+   algorithm, which agrees with published times to within a few minutes. */
+
+const SUN_ZENITH = 90.833      /* official sunrise/sunset, including refraction */
+
+function sunTimesUTC(date, lat, lng){
+  const rad = Math.PI/180, deg = 180/Math.PI
+  const start = new Date(date.getFullYear(), 0, 0)
+  const doy = Math.floor((date - start) / 86400000)
+  const lngHour = lng / 15
+
+  function pass(isRise){
+    const t = doy + ((isRise ? 6 : 18) - lngHour) / 24
+    const M = (0.9856 * t) - 3.289
+    let Ls = M + (1.916*Math.sin(M*rad)) + (0.020*Math.sin(2*M*rad)) + 282.634
+    Ls = (Ls + 360) % 360
+    let RA = deg * Math.atan(0.91764 * Math.tan(Ls*rad))
+    RA = (RA + 360) % 360
+    RA += (Math.floor(Ls/90)*90) - (Math.floor(RA/90)*90)
+    RA /= 15
+    const sinDec = 0.39782 * Math.sin(Ls*rad)
+    const cosDec = Math.cos(Math.asin(sinDec))
+    const cosH = (Math.cos(SUN_ZENITH*rad) - (sinDec*Math.sin(lat*rad))) / (cosDec*Math.cos(lat*rad))
+    if(cosH > 1 || cosH < -1) return null      /* no sunrise or no sunset that day */
+    let H = isRise ? (360 - deg*Math.acos(cosH)) : (deg*Math.acos(cosH))
+    H /= 15
+    let UT = (H + RA - (0.06571*t) - 6.622) - lngHour
+    UT = ((UT % 24) + 24) % 24
+    return UT
+  }
+  return {rise: pass(true), set: pass(false)}
+}
+
+/* Returns "light" or "dark" for a given moment at a given place. */
+function daylightTheme(now){
+  const t = sunTimesUTC(now, BIAS.lat, BIAS.lng)
+  if(t.rise === null || t.set === null) return t.rise === null ? "dark" : "light"
+  const utcHours = now.getUTCHours() + now.getUTCMinutes()/60 + now.getUTCSeconds()/3600
+  /* Compared in UTC on both sides, so British Summer Time needs no special case. */
+  return (utcHours >= t.rise && utcHours < t.set) ? "light" : "dark"
+}
+
+let themeChoice = "auto"      /* auto | light | dark */
+let themeApplied = null
+
+function resolveTheme(){
+  if(themeChoice === "light" || themeChoice === "dark") return themeChoice
+  return daylightTheme(new Date())
+}
+
+function applyTheme(){
+  const want = resolveTheme()
+  if(want !== themeApplied){
+    themeApplied = want
+    document.documentElement.setAttribute("data-theme", want)
+    document.documentElement.style.colorScheme = want
+    const meta = document.querySelector('meta[name="theme-color"]')
+    if(meta) meta.setAttribute("content", want === "light" ? "#f2f2f7" : "#0b0b0b")
+    /* Leaflet sizes its panes against the old paint after a repaint like this. */
+    if(mapOk) setTimeout(()=>{ try{ map.invalidateSize() }catch(e){} }, 60)
+  }
+  renderThemePicker()
+}
+
+function renderThemePicker(){
+  const picker = $("themePicker")
+  if(!picker) return
+  for(const b of picker.querySelectorAll("button"))
+    b.setAttribute("aria-pressed", String(b.dataset.themeChoice === themeChoice))
+  const note = $("themeNote")
+  if(!note) return
+  if(themeChoice !== "auto"){
+    note.textContent = "Fixed to the " + themeChoice + " screen."
+    return
+  }
+  const t = sunTimesUTC(new Date(), BIAS.lat, BIAS.lng)
+  const fmt = ut => {
+    if(ut === null) return "—"
+    const d = new Date()
+    const utc = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) + Math.round(ut*3600000)
+    const local = new Date(utc)
+    return String(local.getHours()).padStart(2,"0")+":"+String(local.getMinutes()).padStart(2,"0")
+  }
+  note.textContent = "Following daylight in Liverpool. Today the sun rises at " +
+    fmt(t.rise) + " and sets at " + fmt(t.set) + ", so the screen is currently " + themeApplied + "."
+}
+
+$("themePicker").addEventListener("click", e=>{
+  const b = e.target.closest("button[data-theme-choice]")
+  if(!b) return
+  themeChoice = b.dataset.themeChoice
+  try{ localStorage.themeChoice = themeChoice }catch(err){}
+  applyTheme()
+})
+
 /* ---------- Router ----------
    Pages follow the driver's actual state, not free navigation. Two hard rules:
    no page without a verified ID, and no page other than the meter while the
@@ -758,7 +939,7 @@ function renderPage(name){
   if(name === "trip")   { mountMap("mapTrip"); renderExtras() }
   if(name === "history"){ renderHistory(); renderStuck() }
   if(name === "earnings") updateDashboard()
-  if(name === "settings"){ renderTariffTable(); renderStorage() }
+  if(name === "settings"){ renderTariffTable(); renderStorage(); renderThemePicker() }
   if(name === "summary")  renderSummary()
 
   document.title = (PAGE_TITLE[name] || "Taxi Meter") + " · Taxi Meter"
@@ -1378,15 +1559,11 @@ function updateTariff(){
 
   activeTariff  = TARIFFS[name]
   currentTariff = name
-  const skin = {
-    Day:   ["#333",    "#fff"],
-    Night: ["#2c1f4a", "#bf9fff"],
-    Peak:  ["#1f3a4a", "#7fd4ff"],
-    Extra: ["#4a1a1a", "#ff6b6b"]
-  }[name]
-  tariffElem.innerText       = name
-  tariffElem.style.background = skin[0]
-  tariffElem.style.color      = skin[1]
+  /* Colour belongs in the stylesheet, which is the only place that knows which
+     theme is in force. This used to hardcode a dark-theme swatch per band. */
+  tariffElem.textContent = name
+  tariffElem.className   = "band-" + name
+  tariffElem.setAttribute("aria-label", "Tariff band: " + name)
 }
 
 function beginGap(seconds){
@@ -1571,6 +1748,7 @@ function tickOnce(){
   lastTickWall += delta*1000
   elapsed += delta
   updateTariff()
+  applyTheme()          /* cheap, and only repaints when the answer changes */
   if(delta <= 3){ for(let i=0;i<delta;i++) processSecond() }
   else beginGap(delta)
   checkIdle()
@@ -1646,6 +1824,7 @@ async function revalidateRestored(){
 
 document.addEventListener("visibilitychange",()=>{
   if(document.visibilityState==="visible"){
+    applyTheme()
     if(wakeLock!==null) keepScreenAwake()
     if(running) tickOnce()
     if(currentPage==="home" || currentPage==="trip") mountMap(currentPage==="trip"?"mapTrip":"mapHome")
@@ -1952,9 +2131,9 @@ function renderHistory(){
   trips.slice(0,200).forEach(t=>{
     const dist = t.miles || "0.00"
     const badge = t.rejected
-      ? "<span style='color:#ff6b61;font-size:12px'>✗ rejected</span>"
-      : (t.synced ? "<span style='color:#4ad07a;font-size:12px'>✓ synced</span>"
-                  : "<span style='color:#ffb340;font-size:12px'>● unsynced</span>")
+      ? "<span class='badge bad'>✗ rejected</span>"
+      : (t.synced ? "<span class='badge ok'>✓ synced</span>"
+                  : "<span class='badge wait'>● unsynced</span>")
     const dest = t.destination ? " → "+esc(t.destination) : ""
     html += "<button type='button' class='history' data-trip=\""+esc(t.tripId)+"\">"+
               "<div class='line1'>"+money(t.fare)+" · "+esc(dist)+" mi · "+esc(t.time)+"</div>"+
@@ -2150,6 +2329,16 @@ resetBtn.addEventListener("click", async function(){
 })
 
 /* ---------- Boot ---------- */
+
+try{
+  const saved = localStorage.themeChoice
+  if(saved === "auto" || saved === "light" || saved === "dark") themeChoice = saved
+}catch(e){}
+applyTheme()
+
+/* A driver on a long night shift should see the screen turn over at dawn even
+   if the meter is idle and nothing else is ticking. */
+setInterval(applyTheme, 60000)
 
 updateTariff()
 setDriverChip()
