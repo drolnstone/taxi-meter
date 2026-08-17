@@ -570,7 +570,25 @@ let gapDistanceTotal = 0, gapEventCount = 0, unbilledGapSeconds = 0
 let gpsState = "idle", lastRecentre = 0
 
 const YARD_M = 0.9144
-const E_STEP_YARDS_UNCONFIRMED = 165      /* ⚠ see the note above */
+/*  ⚠ THE ONE DISPUTED FIGURE IN THIS FILE.
+
+    The published card reads "30p each succeeding 15 yards". Taken literally that
+    is £35.20 per mile — 12.4x the Peak rate, on a band whose flag is only 1.5x the
+    Day flag. A 2 mile job on Christmas Eve would meter at £69.60 against £7.40 in
+    the day, and the airport run at £280.80.
+
+    Three things say it is a dropped character rather than a tariff:
+      - every other band expresses its premium in the INCREMENT, not the step.
+        D and N share a 165 yd step and differ only in price. E at 165 yd fits
+        that pattern exactly: flag x1.50, increment x1.50, step x1.00.
+      - the same sentence goes on to widen the step at 45,000 yards. At 15 yd
+        steps you would have paid £899 before reaching that point, so the clause
+        the council wrote could never operate.
+      - "165" -> "15" is one missing character.
+
+    Set to 15 ONLY on written confirmation from licensing. A driver metering
+    £69.60 for two miles is not a compliance question, it is an accusation.       */
+const E_STEP_YARDS_UNCONFIRMED = 165      /* 165 = reading it as a typo. 15 = as printed. */
 
 function band_(flagGBP, incrementGBP, freeYd, stepYd, laterStepYd, changeAtYd){
   return {
@@ -1848,8 +1866,10 @@ function renderTariffTable(){
     "<p style='font-size:13px;color:var(--dim);line-height:1.5;margin:10px 0 0'>" +
     "From The City of Liverpool Hackney Carriage Rates of Fare, operative 31 March 2025, in the card's own yards. " +
     "The flag covers the first 300 yards; after that a part unit is charged as a whole unit.</p>" +
-    "<p class='warn'>⚠ The E rate step distance is unconfirmed. The published card reads 15 yards, which " +
-    "would be £35 a mile; "+E_STEP_YARDS_UNCONFIRMED+" yd is used here. Confirm with licensing before 24 December.</p>"
+    "<p class='warn bad'>⚠ <strong>E rate step distance is disputed.</strong> The published card reads " +
+    "\"30p each succeeding 15 yards\", which is £35.20 a mile — a 2-mile fare of £69.60 on Christmas Eve, " +
+    "against £11.10 at " + E_STEP_YARDS_UNCONFIRMED + " yd. This meter uses " + E_STEP_YARDS_UNCONFIRMED +
+    " yd, matching the D and N rates. Get it in writing from licensing before 24 December.</p>"
 }
 
 /* ---------- GPS ---------- */
