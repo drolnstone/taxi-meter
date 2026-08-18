@@ -7,6 +7,14 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.json">
+
+<!-- iOS ignores the manifest icons when adding to the home screen and uses this
+     one instead. Without it the driver gets a screenshot of the page as their
+     app icon. -->
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
+<meta name="mobile-web-app-capable" content="yes">
 <title>Taxi Meter</title>
 
 <!-- Pinned, and non-blocking. An unpinned unpkg URL resolves to whatever Leaflet
@@ -443,6 +451,13 @@ details.tech pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 0;font
     <button type="button" id="resetBtn" class="reset" disabled>Reset meter</button>
   </div>
 
+  <div class="card" id="installCard">
+    <h3>App</h3>
+    <div class="row sm"><span>Installed on this phone</span><span id="installState">No</span></div>
+    <button type="button" class="ghost" id="installBtn" hidden>Add to home screen</button>
+    <div id="installHint" class="statusLine"></div>
+  </div>
+
   <div class="card">
     <h3>Backend</h3>
     <button type="button" class="ghost" id="healthBtn">Test connection</button>
@@ -644,6 +659,7 @@ const summaryWarn=$("summaryWarn"), receiptTextEl=$("receiptText"), shareStatus=
 const extrasList=$("extrasList"), tollForm=$("tollForm"), tollKind=$("tollKind"), tollAmount=$("tollAmount")
 const stuckBox=$("stuckBox"), stuckText=$("stuckText"), storeCount=$("storeCount"), pruneStatus=$("pruneStatus")
 const sheetWrap=$("sheetWrap"), sheetEl=$("sheet")
+const installBtn=$("installBtn"), installState=$("installState"), installHint=$("installHint")
 
 /* ---------- Map, which the meter must be able to live without ----------
    L.map() used to run at the top level of this script. If unpkg was unreachable
@@ -2319,6 +2335,63 @@ function notifyOwner(driverId,driverName,action){
     .catch(err=>console.warn("[taxi] instant log not delivered:",err && err.message ? err.message : err))
 }
 
+/* ---------- Install ----------
+
+   Chrome fires beforeinstallprompt and lets the page raise the install sheet
+   itself. iOS never fires it and offers no programmatic route at all, so the
+   only honest thing to do there is name the two taps.
+
+   The card stays on screen after installing rather than disappearing, because
+   "is it actually installed, or are you looking at a browser tab" is the first
+   question worth asking when a driver rings up about the app behaving oddly. */
+
+let deferredInstall = null
+let installedNow = false        /* appinstalled fires in a tab that is still not standalone */
+
+function isStandalone(){
+  return (window.matchMedia && matchMedia("(display-mode: standalone)").matches) ||
+         navigator.standalone === true
+}
+
+function isIOS(){
+  const ua = navigator.userAgent
+  /* iPadOS reports itself as a Mac, so touch points are the only tell. */
+  return /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)
+}
+
+function renderInstall(){
+  const done = isStandalone() || installedNow
+  installState.textContent = done ? "Yes" : "No"
+  show(installBtn, !done && !!deferredInstall)
+  if(done || deferredInstall) installHint.textContent = ""
+  else if(isIOS())            installHint.textContent = "Tap the Share button, then Add to Home Screen."
+  else                        installHint.textContent = "Open your browser menu, then Install app."
+}
+
+window.addEventListener("beforeinstallprompt", e=>{
+  e.preventDefault()            /* suppresses Chrome's own banner in favour of the button */
+  deferredInstall = e
+  renderInstall()
+})
+
+window.addEventListener("appinstalled", ()=>{
+  installedNow = true
+  deferredInstall = null
+  renderInstall()
+})
+
+installBtn.addEventListener("click", async function(){
+  if(!deferredInstall) return
+  installBtn.disabled = true
+  try{
+    deferredInstall.prompt()
+    await deferredInstall.userChoice
+  }catch(e){ console.warn("[taxi] install prompt failed:", e) }
+  deferredInstall = null        /* the event can only be used once, dismissed or not */
+  installBtn.disabled = false
+  renderInstall()
+})
+
 /* ---------- Wiring ---------- */
 
 driverInput.addEventListener("input", onIdInput)
@@ -2396,6 +2469,7 @@ if(wasRunning && validatedDriverId){
 }
 
 update(); renderHistory(); updateDashboard(); renderTariffTable(); renderStorage(); renderStuck()
+renderInstall()
 
 /* Offline first load. Without this, Leaflet is fetched from the network on every
    open and a driver's very first visit must have signal. */

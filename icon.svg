@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#1c1c1e"/>
+    <stop offset="1" stop-color="#0b0b0b"/>
+  </linearGradient>
+  <linearGradient id="body" x1="0" y1="0.30" x2="0" y2="1">
+    <stop offset="0"    stop-color="#FFE668"/>
+    <stop offset="0.55" stop-color="#FFD60A"/>
+    <stop offset="1"    stop-color="#E5B800"/>
+  </linearGradient>
+  <radialGradient id="spill">
+    <stop offset="0"   stop-color="#FFD60A" stop-opacity="0.16"/>
+    <stop offset="1"   stop-color="#FFD60A" stop-opacity="0"/>
+  </radialGradient>
+  <clipPath id="glassClip">
+    <path d="M 214 200 C 216 192 222 188 230 188 L 282 188
+             C 290 188 296 192 298 200 L 314 236 L 198 236 Z"/>
+  </clipPath>
+</defs>
+<rect width="512" height="512" rx="112" fill="url(#bg)"/><g transform="translate(256,256) scale(0.95) translate(-256,-268)">
+  <!-- light spill on the tarmac, just enough to lift the car off the black -->
+  <ellipse cx="256" cy="380" rx="200" ry="30" fill="url(#spill)"/>
+
+  <!-- taxi roof lamp -->
+  <rect x="216" y="150" width="80" height="30" rx="11" fill="#FFD60A"/>
+
+  <!-- body. The notch between the two fender crests and the canopy is the
+       whole point: it is what separates a mid-engine car from a hatchback. -->
+  <path fill="url(#body)" d="
+    M 64 364
+    L 64 298
+    C 64 264 76 240 104 228
+    C 128 238 150 245 172 248
+    C 182 238 190 216 200 200
+    C 205 188 213 182 224 182
+    L 288 182
+    C 299 182 307 188 312 200
+    C 322 216 330 238 340 248
+    C 362 245 384 238 408 228
+    C 436 240 448 264 448 298
+    L 448 364
+    C 448 371 443 376 436 376
+    L 76 376
+    C 69 376 64 371 64 364 Z"/>
+
+  <!-- windscreen -->
+  <path fill="#141416" d="
+    M 214 200
+    C 216 192 222 188 230 188
+    L 282 188
+    C 290 188 296 192 298 200
+    L 314 236
+    L 198 236 Z"/>
+  <g clip-path="url(#glassClip)">
+    <path fill="#ffffff" opacity="0.10" d="M 210 184 L 252 184 L 222 240 L 182 240 Z"/>
+  </g>
+
+  <!-- headlights, swept back under the fender crests -->
+  <path fill="#0b0b0b" d="M 76 264 L 154 246 L 168 266 L 82 286 Z"/>
+  <path fill="#0b0b0b" d="M 436 264 L 358 246 L 344 266 L 430 286 Z"/>
+  <path fill="#ffffff" d="M 89 270 L 149 256 L 155 265 L 92 281 Z"/>
+  <path fill="#ffffff" d="M 423 270 L 363 256 L 357 265 L 420 281 Z"/>
+
+  <!-- lower intake, split by two blades -->
+  <path fill="#0b0b0b" d="M 126 302 L 386 302 L 368 350 L 144 350 Z"/>
+  <path fill="#E5B800" d="M 206 302 L 219 302 L 229 350 L 217 350 Z"/>
+  <path fill="#E5B800" d="M 293 302 L 306 302 L 295 350 L 283 350 Z"/>
+
+  <!-- brake ducts -->
+  <path fill="#0b0b0b" d="M 72 314 L 114 326 L 114 350 L 72 350 Z"/>
+  <path fill="#0b0b0b" d="M 440 314 L 398 326 L 398 350 L 440 350 Z"/>
+</g></svg>
