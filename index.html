@@ -460,7 +460,6 @@ details.more summary:focus-visible{outline:3px solid var(--focusRing);outline-of
   <p class="installLead" id="installFinally" style="margin-top:16px">Once it is on your Home Screen,
      open it from there and enter the Driver ID the office gave you.</p>
   <button type="button" class="ghost" id="installBackBtn">Back</button>
-  <button type="button" class="linkBtn" id="installShareBtn" hidden>Send this link to a driver</button>
 </section>
 
 <!-- ============ SETTINGS ============ -->
@@ -1069,6 +1068,17 @@ function isStandalone(){
          navigator.standalone === true
 }
 
+/* Nothing should invite a driver to install an app they are already inside. Both
+   entry points are dropped in standalone; the route itself still answers if the
+   URL is opened directly, and says it is already done. */
+function syncInstallEntryPoints(){
+  const done = isStandalone()
+  show($("signinInstallBtn"), !done)
+  show($("settingsInstallBtn"), !done)
+  const card = $("settingsInstallBtn").closest(".card")
+  if(card) show(card, !done)
+}
+
 function deviceKind(){
   const ua = navigator.userAgent
   const iOS = /iPad|iPhone|iPod/.test(ua) ||
@@ -1108,8 +1118,6 @@ const INSTALL_TITLES = {
 function renderInstall(){
   const body = $("installBody")
   const d = deviceKind()
-
-  show($("installShareBtn"), !!navigator.share)
 
   if(isStandalone()){
     body.innerHTML = "<div class='installDone'><strong>Already done</strong>" +
@@ -2574,15 +2582,6 @@ $("healthBtn").addEventListener("click", healthCheck)
 $("signinInstallBtn").addEventListener("click", ()=>navigate("install"))
 $("settingsInstallBtn").addEventListener("click", ()=>navigate("install"))
 $("installBackBtn").addEventListener("click", ()=>navigate(validatedDriverId ? "settings" : "signin"))
-$("installShareBtn").addEventListener("click", async ()=>{
-  /* How a new driver gets here in the first place: the office sends the link. */
-  const url = location.href.split("#")[0] + "#/install"
-  try{ await navigator.share({title:"Taxi Meter — set up on your phone", url}) }
-  catch(e){
-    if(e && e.name === "AbortError") return
-    try{ await navigator.clipboard.writeText(url) }catch(err){}
-  }
-})
 $("signOutBtn").addEventListener("click", signOut)
 
 actionBtn.addEventListener("click", function(){
@@ -2607,6 +2606,7 @@ try{
   if(saved === "auto" || saved === "light" || saved === "dark") themeChoice = saved
 }catch(e){}
 applyTheme()
+syncInstallEntryPoints()
 
 /* A driver on a long night shift should see the screen turn over at dawn even
    if the meter is idle and nothing else is ticking. */
