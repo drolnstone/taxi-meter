@@ -11,8 +11,6 @@
                                                            a signal, and the old
                                                            copy keeps working
                                                            when there is not)
-      icons           cache first                          (they only ever change
-                                                           by changing filename)
       Leaflet         cache first                          (pinned to 1.9.4, so
                                                            it never changes)
       map tiles       never cached                         (thousands of them, and
@@ -29,13 +27,7 @@ const CACHE_VERSION = "taxi-meter-v4";
 const SHELL = [
   "./",
   "./index.html",
-  "./manifest.json",
-  "./icon-192.png",
-  "./icon-512.png",
-  "./icon-maskable-512.png",
-  "./apple-touch-icon.png",
-  "./favicon-32.png",
-  "./icon.svg"
+  "./manifest.json"
 ];
 
 const VENDOR = [
@@ -70,10 +62,6 @@ function isTile(url) {
 function isBackend(url) {
   return /script\.google\.com|api\.postcodes\.io|photon\.komoot\.io/.test(url);
 }
-/* Icons only ever change by changing filename, so they are safe to pin hard. */
-function isIcon(url) {
-  return /\.(png|svg|ico)$/.test(new URL(url).pathname);
-}
 
 self.addEventListener("fetch", event => {
   const req = event.request;
@@ -85,7 +73,7 @@ self.addEventListener("fetch", event => {
      stale driver record could let a suspended ID start a job. */
   if (isBackend(url) || isTile(url)) return;
 
-  if (VENDOR.indexOf(url) !== -1 || isIcon(url)) {
+  if (VENDOR.indexOf(url) !== -1) {
     event.respondWith((async () => {
       const hit = await caches.match(req);
       if (hit) return hit;
@@ -101,12 +89,7 @@ self.addEventListener("fetch", event => {
     event.respondWith((async () => {
       try {
         const res = await fetch(req);
-        /* A redirected response cannot be replayed for a navigation request:
-           the browser throws "Response served by service worker has
-           redirections". Only cache what can actually be served back. */
-        if (res && res.ok && !res.redirected) {
-          (await caches.open(CACHE_VERSION)).put(req, res.clone());
-        }
+        if (res && res.ok) (await caches.open(CACHE_VERSION)).put(req, res.clone());
         return res;
       } catch (e) {
         const hit = await caches.match(req) || await caches.match("./index.html");

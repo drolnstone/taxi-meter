@@ -7,14 +7,6 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.json">
-
-<!-- iOS ignores the manifest icons when adding to the home screen and uses this
-     one instead. Without it the driver gets a screenshot of the page as their
-     app icon. -->
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
-<meta name="mobile-web-app-capable" content="yes">
 <title>Taxi Meter</title>
 
 <!-- Pinned, and non-blocking. An unpinned unpkg URL resolves to whatever Leaflet
@@ -79,7 +71,7 @@
 *{-webkit-tap-highlight-color:transparent;box-sizing:border-box}
 /* Any id or class rule that sets `display` outranks the user agent's
    [hidden]{display:none}, which would make show()/hidden silently no-op on
-   #topBar, #tabBar and .collapsedStrip. This settles it once. */
+   #topBar and #tabBar. This settles it once. */
 [hidden]{display:none!important}
 html{-webkit-text-size-adjust:100%;background:var(--bg)}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
@@ -173,8 +165,9 @@ details.tech pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 0;font
 #page-signin{padding-top:calc(20px + env(safe-area-inset-top))}
 
 /* ---------- Destination ---------- */
-#suggestions{background:var(--field);border-radius:10px;overflow:hidden auto;max-height:40vh;margin-bottom:6px}
-#suggestions:empty{display:none}
+#suggestions,#pickupSuggestions{background:var(--field);border-radius:10px;overflow:hidden auto;
+  max-height:34vh;margin-bottom:6px}
+#suggestions:empty,#pickupSuggestions:empty{display:none}
 .sugg{display:flex;align-items:center;width:100%;min-height:56px;margin:0;padding:16px 12px;
   font-size:17px;font-weight:400;text-align:left;background:none;color:var(--ink);border:none;border-radius:0;
   border-bottom:1px solid var(--line)}
@@ -185,9 +178,6 @@ details.tech pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 0;font
 .estLine{font-size:15px;color:var(--goodInk2);margin:2px 0}
 .estFare{font-size:26px;font-weight:bold;color:var(--goodInk);margin:6px 0}
 .estNote{font-size:13px;color:var(--goodInk3);margin-top:6px}
-.collapsedStrip{display:block;width:100%;text-align:left;margin:0;padding:14px 12px;background:var(--field);
-  border:none;border-left:3px solid var(--infoLine);border-radius:10px;font-size:16px;font-weight:400;color:var(--infoInk)}
-.collapsedStrip .sub{display:block;font-size:13px;color:var(--dim);margin-top:3px}
 
 /* ---------- Trip ---------- */
 .fareDisplay{position:sticky;top:calc(46px + env(safe-area-inset-top));z-index:800;
@@ -197,10 +187,6 @@ details.tech pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 0;font
 .fareLabel{font-size:16px;color:var(--ink2);letter-spacing:2px}
 .fareValue{font-size:clamp(44px,17vw,72px);font-weight:bold;color:var(--fare);letter-spacing:3px;line-height:1.05}
 .fareExtra{font-size:15px;color:var(--goodInk);margin-top:2px;min-height:18px}
-#navBanner{background:var(--infoBg);border-left:3px solid var(--infoLine);border-radius:12px;padding:14px;margin-bottom:14px}
-#navDist{font-size:28px;font-weight:bold;color:var(--infoInk)}
-#navText{font-size:18px;color:var(--infoInk2);margin-top:4px}
-#navMeta{font-size:13px;color:var(--infoInk3);margin-top:6px}
 #gpsBanner{border-radius:12px;padding:14px;margin-bottom:14px;font-size:17px;line-height:1.4;
   background:var(--dangerBg);border-left:3px solid var(--dangerLine);color:var(--dangerInk)}
 #idleBanner{background:var(--warnBg);border-left:3px solid var(--warnLine);border-radius:12px;padding:16px;margin-bottom:14px}
@@ -296,17 +282,23 @@ details.tech pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 0;font
   <h1 id="h-home" tabindex="-1">Set up the job</h1>
 
   <div class="card" id="destCard">
-    <div id="destExpanded">
-      <label class="fieldLabel" for="destInput">Destination (postcode or address)</label>
-      <input id="destInput" type="search" placeholder="L4 0TH or 24 Scotland Road"
-             enterkeyhint="search" autocapitalize="words" autocorrect="off"
-             spellcheck="false" autocomplete="off">
-      <div id="suggestions" role="listbox" aria-label="Address suggestions"></div>
-    </div>
-    <button type="button" id="destSummary" class="collapsedStrip" hidden></button>
+    <h3>Quote a job</h3>
+    <label class="fieldLabel" for="pickupInput">Pick-up</label>
+    <input id="pickupInput" type="search" placeholder="Leave blank to use where you are now"
+           enterkeyhint="search" autocapitalize="words" autocorrect="off"
+           spellcheck="false" autocomplete="off">
+    <div id="pickupSuggestions" role="listbox" aria-label="Pick-up suggestions"></div>
+
+    <label class="fieldLabel" for="destInput">Destination</label>
+    <input id="destInput" type="search" placeholder="L4 0TH or 24 Scotland Road"
+           enterkeyhint="search" autocapitalize="words" autocorrect="off"
+           spellcheck="false" autocomplete="off">
+    <div id="suggestions" role="listbox" aria-label="Destination suggestions"></div>
+
     <div id="destStatus" class="statusLine" role="status" aria-live="polite" aria-atomic="true"></div>
     <div id="estimateBox" hidden></div>
-    <button type="button" id="clearDestBtn" class="reset" hidden>Clear destination</button>
+    <button type="button" id="useQuoteBtn" class="start" hidden></button>
+    <button type="button" id="clearDestBtn" class="reset" hidden>Clear the job</button>
   </div>
 
   <div class="card">
@@ -343,12 +335,6 @@ details.tech pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 0;font
     <div id="idleText"></div>
     <button type="button" class="start" id="idleKeepBtn">Yes, keep the meter running</button>
     <button type="button" class="stop" id="idleEndBtn">End the trip now</button>
-  </div>
-
-  <div id="navBanner" hidden>
-    <div id="navDist"></div>
-    <div id="navText"></div>
-    <div id="navMeta"></div>
   </div>
 
   <div id="tripEst" hidden></div>
@@ -415,9 +401,11 @@ details.tech pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 0;font
   </div>
   <div class="card">
     <h3>Office sync</h3>
-    <button type="button" id="syncBtn" class="sync">Sync to Google Sheets</button>
-    <button type="button" class="export" id="exportBtn">Export CSV</button>
+    <p style="font-size:13px;color:var(--dim);line-height:1.5;margin:0 0 6px">
+      A finished trip is sent to the office straight away. If there is no signal it keeps
+      trying on its own until it lands — there is nothing to press.</p>
     <div id="syncStatus" class="statusLine" role="status" aria-live="polite" aria-atomic="true"></div>
+    <button type="button" class="export" id="exportBtn">Export CSV</button>
     <div id="stuckBox" hidden>
       <div class="warn bad" id="stuckText"></div>
       <button type="button" class="reset" id="discardBtn">Discard the rejected trips</button>
@@ -449,13 +437,6 @@ details.tech pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 0;font
     <h3>Meter</h3>
     <div class="row sm"><span>GPS</span><span id="gpsSettings">Idle</span></div>
     <button type="button" id="resetBtn" class="reset" disabled>Reset meter</button>
-  </div>
-
-  <div class="card" id="installCard">
-    <h3>App</h3>
-    <div class="row sm"><span>Installed on this phone</span><span id="installState">No</span></div>
-    <button type="button" class="ghost" id="installBtn" hidden>Add to home screen</button>
-    <div id="installHint" class="statusLine"></div>
   </div>
 
   <div class="card">
@@ -538,9 +519,7 @@ const BACKEND_TIMEOUT_MS = 12000   /* a hung fetch must never strand the driver 
 /* Estimation and reconciliation tuning */
 const ROAD_FACTOR         = 1.25   /* straight line to road distance multiplier for gap fill */
 const ASSUMED_MOVING_MPH  = 19     /* urban moving speed used to separate driving time from stopped time */
-const M_PER_YARD          = 0.9144
 const M_PER_MILE          = 1609.34
-const YARDS_TO_MILES_AT   = 880
 const EST_LOW             = 0.90
 const EST_HIGH            = 1.20
 const OFF_ROUTE_METRES    = 100
@@ -572,9 +551,9 @@ let startCoord = null, endCoord = null
 let validatedDriverId = null, validatedDriverName = null
 let sessionToken = null   /* issued by the backend at verify time, signed and time limited */
 
-let destination = null, quoted = null, agreedFare = null
+let destination = null, pickup = null, quoted = null, agreedFare = null
 let extras = []
-let navSteps = [], currentStepIdx = 0, routeCoords = [], arrivalSpoken = false
+let routeCoords = []
 let offRouteCount = 0, rerouting = false
 let routeLine = null, destMarker = null
 
@@ -645,13 +624,12 @@ const actionBtn=$("actionBtn"), actionBar=$("actionBar"), tabBar=$("tabBar")
 const bottomDock=$("bottomDock"), topBar=$("topBar"), whoami=$("whoami")
 const resetBtn=$("resetBtn"), gpsTrip=$("gpsTrip"), gpsSettings=$("gpsSettings"), gpsBanner=$("gpsBanner")
 const historyDiv=$("history"), tariffElem=$("tariff"), tariffTable=$("tariffTable")
-const syncBtn=$("syncBtn"), syncStatus=$("syncStatus"), healthStatus=$("healthStatus")
+const syncStatus=$("syncStatus"), healthStatus=$("healthStatus")
 const driverInput=$("driverInput"), verifyBtn=$("verifyBtn"), idStatus=$("idStatus")
 const destInput=$("destInput"), suggestions=$("suggestions"), destStatus=$("destStatus")
-const estimateBox=$("estimateBox"), clearDestBtn=$("clearDestBtn")
-const destExpanded=$("destExpanded"), destSummary=$("destSummary")
+const pickupInput=$("pickupInput"), pickupSuggestions=$("pickupSuggestions")
+const estimateBox=$("estimateBox"), clearDestBtn=$("clearDestBtn"), useQuoteBtn=$("useQuoteBtn")
 const agreedInput=$("agreedInput"), agreedStatus=$("agreedStatus"), agreedChip=$("agreedChip")
-const navBanner=$("navBanner"), navDist=$("navDist"), navText=$("navText"), navMeta=$("navMeta")
 const tripEst=$("tripEst"), gapNotice=$("gapNotice")
 const idleBanner=$("idleBanner"), idleText=$("idleText")
 const summaryFare=$("summaryFare"), summarySub=$("summarySub"), summaryRows=$("summaryRows")
@@ -659,7 +637,6 @@ const summaryWarn=$("summaryWarn"), receiptTextEl=$("receiptText"), shareStatus=
 const extrasList=$("extrasList"), tollForm=$("tollForm"), tollKind=$("tollKind"), tollAmount=$("tollAmount")
 const stuckBox=$("stuckBox"), stuckText=$("stuckText"), storeCount=$("storeCount"), pruneStatus=$("pruneStatus")
 const sheetWrap=$("sheetWrap"), sheetEl=$("sheet")
-const installBtn=$("installBtn"), installState=$("installState"), installHint=$("installHint")
 
 /* ---------- Map, which the meter must be able to live without ----------
    L.map() used to run at the top level of this script. If unpkg was unreachable
@@ -701,7 +678,8 @@ function localTimestamp(){
 function speakFare(msg){
   try{ if(window.speechSynthesis) speechSynthesis.speak(new SpeechSynthesisUtterance(msg)) }catch(e){}
 }
-function speakNav(msg){ try{ speechSynthesis.cancel() }catch(e){} speakFare(msg) }
+/* speakNav() is gone with the guidance. Everything the app still says — trip
+   started, trip complete, GPS lost, the idle prompt — goes through speakFare. */
 
 /* iOS ties permission to speak to the gesture the user made. startTrip awaits a
    network round trip before it announces anything, which puts the announcement
@@ -788,7 +766,7 @@ function setGps(state){
   const bad = (state === "error")
   show(gpsBanner, bad && running)
   if(bad) gpsBanner.textContent = "⚠ GPS lost. Distance is not being counted — the meter is charging waiting time only. Check the phone has a clear view of the sky."
-  if(changed && bad && running) speakNav("G P S signal lost")
+  if(changed && bad && running) speakFare("G P S signal lost")
 }
 
 /* ---------- Theme ----------
@@ -971,7 +949,7 @@ function renderPage(name){
 
   if(name === "home")     mountMap("mapHome")
   if(name === "trip")   { mountMap("mapTrip"); renderExtras() }
-  if(name === "history"){ renderHistory(); renderStuck() }
+  if(name === "history"){ renderHistory(); renderStuck(); reportQueue() }
   if(name === "earnings") updateDashboard()
   if(name === "settings"){ renderTariffTable(); renderStorage(); renderThemePicker() }
   if(name === "summary")  renderSummary()
@@ -1019,7 +997,7 @@ tabBar.addEventListener("click", e=>{
 
 /* The fixed dock and the software keyboard fight over the same space, which
    pushes the last address suggestions off screen. */
-for(const el of [driverInput, destInput, agreedInput]){
+for(const el of [driverInput, destInput, pickupInput, agreedInput]){
   el.addEventListener("focus", ()=>{ bottomDock.style.display = "none"; syncDockPadding() })
   el.addEventListener("blur",  ()=>{ setTimeout(()=>{ if(currentPage) renderPage(currentPage) }, 120) })
 }
@@ -1133,6 +1111,7 @@ async function validateId(){
       try{ localStorage.lastDriverId = id }catch(e){}
       setDriverChip()
       navigate("home")
+      syncAttempt = 0; cancelSync(); pushQueue()
     } else if(json.valid && !json.active){
       setStatus(idStatus,"⛔ "+(json.message||"Account suspended. Contact your manager."),"bad"); lockApp()
     } else {
@@ -1168,24 +1147,23 @@ async function healthCheck(){
 
 /* ---------- Destination lookup ---------- */
 
-function collapseDestCard(){
-  if(!destination) return
-  show(destExpanded,false); show(destSummary,true)
-  destSummary.innerHTML = esc(destination.label) + "<span class='sub'>Tap to change</span>"
+/* One lookup, wired to both ends of the job. The pick-up field is what turns
+   this from "what will it cost from where I am standing" into a quote the driver
+   can give over the phone before moving. */
+function wireAddressField(input, box, onPick){
+  let timer = null
+  const go = q => { if(q.length >= 3) lookupInto(q, box, onPick) }
+  input.addEventListener("input", ()=>{
+    clearTimeout(timer)
+    const q = input.value.trim()
+    setStatus(destStatus,"")
+    if(q.length < 3){ box.innerHTML = ""; return }
+    timer = setTimeout(()=>go(q), 350)
+  })
+  input.addEventListener("keydown", e=>{
+    if(e.key === "Enter"){ e.preventDefault(); clearTimeout(timer); go(input.value.trim()) }
+  })
 }
-function expandDestCard(){ show(destExpanded,true); show(destSummary,false) }
-
-let suggestTimer = null
-destInput.addEventListener("input",()=>{
-  clearTimeout(suggestTimer)
-  const q = destInput.value.trim()
-  setStatus(destStatus,"")
-  if(q.length < 3){ suggestions.innerHTML=""; return }
-  suggestTimer = setTimeout(()=>lookupSuggestions(q),350)
-})
-destInput.addEventListener("keydown",e=>{
-  if(e.key==="Enter"){ e.preventDefault(); clearTimeout(suggestTimer); lookupSuggestions(destInput.value.trim()) }
-})
 
 function photonLabel(f){
   const p = f.properties || {}
@@ -1198,76 +1176,96 @@ function photonLabel(f){
   return parts.join(", ") || "Unnamed location"
 }
 
-async function lookupSuggestions(q){
+async function lookupInto(q, box, onPick){
   if(!q) return
-  suggestions.innerHTML = ""
+  box.innerHTML = ""
   setStatus(destStatus,"Searching…")
   try{
     if(FULL_PC.test(q)){
       const r = await fetch(POSTCODES_URL+encodeURIComponent(q.replace(/\s+/g,"")))
       const j = await r.json()
       if(j.status===200 && j.result)
-        return renderSuggestions([{label:j.result.postcode+", "+(j.result.admin_ward||j.result.admin_district||""), lat:j.result.latitude, lng:j.result.longitude}])
-      return renderSuggestions([])
+        return renderInto(box, onPick, [{label:j.result.postcode+", "+(j.result.admin_ward||j.result.admin_district||""), lat:j.result.latitude, lng:j.result.longitude}])
+      return renderInto(box, onPick, [])
     }
     if(PARTIAL_PC.test(q)){
       const r = await fetch(POSTCODES_URL+encodeURIComponent(q.replace(/\s+/g,""))+"/autocomplete")
       const j = await r.json()
       if(j.result && j.result.length)
-        return renderSuggestions(j.result.slice(0,6).map(pc=>({label:pc, postcode:pc})))
+        return renderInto(box, onPick, j.result.slice(0,6).map(pc=>({label:pc, postcode:pc})))
     }
     const url = PHOTON_URL+"?q="+encodeURIComponent(q)+"&limit=6&lang=en&lat="+BIAS.lat+"&lon="+BIAS.lng
     const r = await fetch(url)
     const j = await r.json()
-    renderSuggestions((j.features||[]).map(f=>({label:photonLabel(f), lat:f.geometry.coordinates[1], lng:f.geometry.coordinates[0]})))
+    renderInto(box, onPick, (j.features||[]).map(f=>({label:photonLabel(f), lat:f.geometry.coordinates[1], lng:f.geometry.coordinates[0]})))
   }catch(e){
-    suggestions.innerHTML = ""
+    box.innerHTML = ""
     setStatus(destStatus,"Address lookup unavailable. Check the connection.","warn2")
   }
 }
 
 /* Real buttons, not clickable divs. The old markup had no keyboard or screen
    reader path to setting a destination at all. */
-function renderSuggestions(list){
-  suggestions.innerHTML = ""
+function renderInto(box, onPick, list){
+  box.innerHTML = ""
   if(!list.length){ setStatus(destStatus,"No matches found"); return }
   setStatus(destStatus,"")
   list.forEach(item=>{
     const b = document.createElement("button")
     b.type = "button"; b.className = "sugg"; b.setAttribute("role","option")
     b.textContent = item.label
-    b.addEventListener("click", ()=>selectDestination(item))
-    suggestions.appendChild(b)
+    b.addEventListener("click", ()=>onPick(item))
+    box.appendChild(b)
   })
+}
+
+/* A postcode picked from the autocomplete list carries no coordinates yet. */
+async function resolvePoint(item){
+  if(item.postcode && item.lat === undefined){
+    setStatus(destStatus,"Resolving postcode…")
+    const r = await fetch(POSTCODES_URL+encodeURIComponent(item.postcode.replace(/\s+/g,"")))
+    const j = await r.json()
+    if(j.status !== 200 || !j.result) throw new Error("Could not resolve that postcode.")
+    item.lat = j.result.latitude; item.lng = j.result.longitude
+  }
+  return {label:item.label, lat:item.lat, lng:item.lng}
 }
 
 async function selectDestination(item){
   suggestions.innerHTML = ""
   destInput.value = item.label
-  if(item.postcode && (item.lat===undefined)){
-    setStatus(destStatus,"Resolving postcode…")
-    try{
-      const r = await fetch(POSTCODES_URL+encodeURIComponent(item.postcode.replace(/\s+/g,"")))
-      const j = await r.json()
-      if(j.status!==200||!j.result) throw "notfound"
-      item.lat = j.result.latitude; item.lng = j.result.longitude
-    }catch(e){ setStatus(destStatus,"Could not resolve that postcode.","bad"); return }
-  }
-  destination = {label:item.label, lat:item.lat, lng:item.lng}
+  try{ destination = await resolvePoint(item) }
+  catch(e){ setStatus(destStatus, e.message, "bad"); return }
   show(clearDestBtn,true)
-  arrivalSpoken = false
   await buildRoute(false)
-  collapseDestCard()
   saveTripState()
 }
 
+async function selectPickup(item){
+  pickupSuggestions.innerHTML = ""
+  pickupInput.value = item.label
+  try{ pickup = await resolvePoint(item) }
+  catch(e){ setStatus(destStatus, e.message, "bad"); return }
+  show(clearDestBtn,true)
+  if(destination) await buildRoute(false)
+  saveTripState()
+}
+
+wireAddressField(destInput,   suggestions,       selectDestination)
+wireAddressField(pickupInput, pickupSuggestions, selectPickup)
+
+/* Clearing the pick-up by hand falls back to metering from the current position. */
+pickupInput.addEventListener("input", ()=>{
+  if(pickupInput.value.trim() === "") pickup = null
+})
+
 function clearDestination(){
-  destination = null; quoted = null
-  navSteps = []; routeCoords = []; currentStepIdx = 0; offRouteCount = 0; arrivalSpoken = false
-  destInput.value = ""; suggestions.innerHTML = ""; setStatus(destStatus,"")
-  show(estimateBox,false); show(tripEst,false); show(clearDestBtn,false)
-  expandDestCard()
-  show(navBanner,false)
+  destination = null; pickup = null; quoted = null
+  routeCoords = []; offRouteCount = 0
+  destInput.value = ""; suggestions.innerHTML = ""
+  pickupInput.value = ""; pickupSuggestions.innerHTML = ""
+  setStatus(destStatus,"")
+  show(estimateBox,false); show(tripEst,false); show(clearDestBtn,false); show(useQuoteBtn,false)
   if(mapOk){
     if(routeLine){ map.removeLayer(routeLine); routeLine = null }
     if(destMarker){ map.removeLayer(destMarker); destMarker = null }
@@ -1292,8 +1290,15 @@ function getCurrentPositionOnce(){
 async function buildRoute(isReroute){
   if(!destination) return
   let origin
-  try{ origin = await getCurrentPositionOnce() }
-  catch(e){ setStatus(destStatus,"Waiting for GPS to work out the route.","warn2"); return }
+  /* A quote given over the phone starts where the passenger is, not where the
+     cab happens to be parked. Once the meter is running the cab's own position
+     takes over, so the remaining-distance figure stays true. */
+  if(pickup && !running && !isReroute){
+    origin = {lat:pickup.lat, lng:pickup.lng}
+  } else {
+    try{ origin = await getCurrentPositionOnce() }
+    catch(e){ setStatus(destStatus,"Waiting for GPS to work out the route.","warn2"); return }
+  }
 
   if(!isReroute) setStatus(destStatus,"Calculating route…")
   try{
@@ -1301,7 +1306,7 @@ async function buildRoute(isReroute){
       type:"route",
       from:{lat:origin.lat, lng:origin.lng},
       to:{lat:destination.lat, lng:destination.lng}
-    })
+    })   /* the backend asks OpenRouteService for geometry and distance only */
     if(reply.status !== "ok" || !reply.route)
       throw new Error(reply.message || "The backend has no route handler yet.")
     const feat = reply.route.features && reply.route.features[0]
@@ -1309,12 +1314,7 @@ async function buildRoute(isReroute){
     const seg = feat.properties.segments[0]
 
     routeCoords = feat.geometry.coordinates.map(c=>[c[1],c[0]])
-    navSteps = (seg.steps||[]).map(s=>{
-      const idx = s.way_points ? s.way_points[0] : 0
-      const c = routeCoords[Math.min(idx,routeCoords.length-1)] || [origin.lat,origin.lng]
-      return {instruction:s.instruction, name:s.name, point:{lat:c[0],lng:c[1]}, spokenFar:false, spokenNear:false}
-    })
-    currentStepIdx = 0; offRouteCount = 0
+    offRouteCount = 0
 
     drawRoute()
     showEstimate(seg.distance, seg.duration, isReroute)
@@ -1344,14 +1344,28 @@ function showEstimate(distM,durS,isReroute){
   const miles = (distM/M_PER_MILE).toFixed(2)
   const mins  = Math.round(durS/60)
 
-  if(!running && !isReroute) quoted = {low,mid,high,miles:Number(miles),mins}
+  if(!running && !isReroute){
+    quoted = {low,mid,high,miles:Number(miles),mins,
+              from: pickup ? pickup.label : "where you are now",
+              to: destination ? destination.label : ""}
+  }
 
   show(estimateBox,true)
-  estimateBox.innerHTML =
+  const leg = (!running && quoted)
+    ? "<div class='estLine'>" + esc(quoted.from) + " → " + esc(quoted.to) + "</div>"
+    : ""
+  estimateBox.innerHTML = leg +
     "<div class='estLine'>"+(running?"Remaining":"Estimated")+" journey: "+miles+" mi, about "+mins+" min</div>"+
     "<div class='estFare'>"+money(low)+" to "+money(high)+"</div>"+
     "<div class='estLine'>Based on the "+esc(currentTariff)+" tariff</div>"+
-    "<div class='estNote'>Guide price only. The meter reading is the amount charged. Traffic and waiting time can push the fare above this range.</div>"
+    "<div class='estNote'>Guide price only. The meter reading is the amount charged unless a fare is agreed in advance. Traffic and waiting time can push the fare above this range.</div>"
+
+  /* Only offered before the meter starts: an agreed fare has to be struck with
+     the passenger before the journey, per the council card. */
+  if(!running && quoted){
+    show(useQuoteBtn,true)
+    useQuoteBtn.textContent = "Set " + money(quoted.mid) + " as the agreed fare"
+  } else show(useQuoteBtn,false)
 
   if(running){
     show(tripEst,true)
@@ -1359,51 +1373,19 @@ function showEstimate(distM,durS,isReroute){
   }
 }
 
-/* ---------- Navigation guidance ---------- */
+/* ---------- Remaining-distance refresh ----------
 
-function updateNavigation(lat,lng){
-  if(!destination){ show(navBanner,false); return }
+   Turn-by-turn guidance has been removed. The routing service this app can reach
+   does not produce instructions that match what a driver sees against Apple or
+   Google Maps, and a manoeuvre called at the wrong junction is worse than no
+   manoeuvre at all — the driver either follows it and goes wrong, or learns to
+   ignore the banner, which makes every other alert on the screen cheaper too.
 
-  const dToDest = getDistance(lat,lng,destination.lat,destination.lng)
-  if(dToDest < 60){
-    show(navBanner,true)
-    navDist.textContent = ""
-    navText.textContent = "Arriving at destination"
-    navMeta.textContent = destination.label
-    if(running && !arrivalSpoken){ arrivalSpoken = true; speakNav("Arriving at destination") }
-    return
-  }
+   What remains is analysis, not direction: when the cab has clearly left the
+   quoted line, the route is refetched so the remaining distance, time and guide
+   price stay honest. Nothing is drawn as an instruction and nothing is spoken. */
 
-  if(!navSteps.length){ show(navBanner,false); return }
-
-  while(currentStepIdx < navSteps.length-1){
-    const m = navSteps[currentStepIdx].point
-    if(getDistance(lat,lng,m.lat,m.lng) < 25) currentStepIdx++
-    else break
-  }
-
-  const s = navSteps[currentStepIdx]
-  const d = getDistance(lat,lng,s.point.lat,s.point.lng)
-
-  show(navBanner,true)
-  navDist.textContent = d > YARDS_TO_MILES_AT
-    ? (d/M_PER_MILE).toFixed(1)+" mi"
-    : Math.max(10,Math.round(d/M_PER_YARD/10)*10)+" yd"
-  navText.textContent = s.instruction
-  navMeta.textContent = (dToDest/M_PER_MILE).toFixed(1)+" mi to "+destination.label
-
-  if(running){
-    if(d < 250 && !s.spokenFar){
-      const yards = Math.max(50,Math.round(d/M_PER_YARD/50)*50)
-      s.spokenFar = true; speakNav("In "+yards+" yards, "+s.instruction)
-    }
-    if(d < 45 && !s.spokenNear){ s.spokenNear = true; speakNav(s.instruction) }
-  }
-
-  checkOffRoute(lat,lng)
-}
-
-function checkOffRoute(lat,lng){
+function refreshRemaining(lat,lng){
   if(!routeCoords.length || rerouting || !running) return
   let min = Infinity
   for(let i=0;i<routeCoords.length;i+=3){
@@ -1416,7 +1398,6 @@ function checkOffRoute(lat,lng){
 
   if(offRouteCount >= OFF_ROUTE_FIXES){
     offRouteCount = 0; rerouting = true
-    navText.textContent = "Recalculating route"
     buildRoute(true).finally(()=>{ rerouting = false })
   }
 }
@@ -1717,13 +1698,24 @@ $("tollAdd").addEventListener("click", ()=>{
   tollAmount.value = ""; show(tollForm,false)
 })
 
+useQuoteBtn.addEventListener("click", ()=>{
+  if(!quoted) return
+  agreedInput.value = quoted.mid.toFixed(2)
+  agreedInput.dispatchEvent(new Event("input"))
+  setStatus(destStatus,"Agreed fare set from this quote: "+money(quoted.mid)+".","ok")
+})
+
 agreedInput.addEventListener("input", ()=>{
   const v = agreedInput.value.trim()
   if(v === ""){ agreedFare = null; setStatus(agreedStatus,""); return }
   const n = Number(v)
   if(!isFinite(n) || n < 0 || n > 2000){ agreedFare = null; setStatus(agreedStatus,"Enter an amount between £0 and £2000.","bad"); return }
   agreedFare = Math.round(n*100)/100
-  setStatus(agreedStatus,"The passenger will be charged "+money(agreedFare)+" plus any permitted extras.","ok")
+  const basis = quoted
+    ? " App quote for this journey was " + money(quoted.low) + " to " + money(quoted.high) + "."
+    : " No route quote has been taken, so this figure is not backed by an estimate."
+  setStatus(agreedStatus,"The passenger will be charged "+money(agreedFare)+" plus any permitted extras."+basis,
+            quoted ? "ok" : "warn2")
 })
 
 /* ---------- Meter display ---------- */
@@ -1802,7 +1794,7 @@ function saveTripState(){
       running,distance,elapsed,accumulatedFare,currentTariff,startCoord,lastPos,
       chargeableDistance,waitingSeconds,incrementsCharged,tripStartTime,
       validatedDriverId,validatedDriverName,sessionToken,
-      destination,quoted,agreedFare,extras,
+      destination,pickup,quoted,agreedFare,extras,
       gapDistanceTotal,gapEventCount,unbilledGapSeconds,lastMovementAt,savedAt:Date.now()
     })
   }catch(e){ console.warn("[taxi] could not save trip state:", e) }
@@ -1822,7 +1814,7 @@ function restoreTripState(){
     tripStartTime=s.tripStartTime||null
     validatedDriverId=s.validatedDriverId||null; validatedDriverName=s.validatedDriverName||null
     sessionToken=s.sessionToken||null
-    destination=s.destination||null; quoted=s.quoted||null
+    destination=s.destination||null; pickup=s.pickup||null; quoted=s.quoted||null
     agreedFare=(s.agreedFare===undefined?null:s.agreedFare)
     extras=Array.isArray(s.extras)?s.extras:[]
     gapDistanceTotal=s.gapDistanceTotal||0; gapEventCount=s.gapEventCount||0
@@ -1927,7 +1919,7 @@ function onPosition(p){
       try{ map.setView([lat,lng],16,{animate:!REDUCE_MOTION}) }catch(e){}
     }
   }
-  updateNavigation(lat,lng)
+  refreshRemaining(lat,lng)
   if(running){ saveTripState(); update() }
 }
 
@@ -1975,7 +1967,6 @@ async function startTrip(){
   accumulatedFare=activeTariff.base; tripStartTime=localTimestamp()
   lastTickWall=Date.now()
   lastMovementAt=Date.now(); idlePromptAt=0
-  arrivalSpoken=false
   keepScreenAwake()
   actionBtn.textContent="Stop trip"; actionBtn.className="stop"; actionBtn.disabled=false
   resetBtn.disabled=true
@@ -2000,10 +1991,12 @@ async function stopTrip(){
   if(wakeLock){ try{ wakeLock.release() }catch(e){} wakeLock=null }
   clearTripState(); endCoord=lastPos
   resetBtn.disabled=false
-  show(navBanner,false); show(idleBanner,false); show(agreedChip,false)
+  show(idleBanner,false); show(agreedChip,false)
   speakFare("Trip complete. Total to pay is "+chargeableTotal().toFixed(2)+" pounds")
 
   const rec = saveTrip()
+  /* Straight out, before the driver has put the phone down. */
+  syncAttempt = 0; cancelSync(); pushQueue()
   update()
   summaryContext = {mode:"live", trip:rec, text:receiptText(rec)}
   navigate("summary")
@@ -2016,6 +2009,7 @@ function resetTrip(){
   gapDistanceTotal=0; gapEventCount=0; pendingGap=null; unbilledGapSeconds=0
   chargeableDistance=0; waitingSeconds=0; incrementsCharged=0
   extras=[]; agreedFare=null; agreedInput.value=""; setStatus(agreedStatus,"")
+  pickup=null; pickupInput.value=""; pickupSuggestions.innerHTML=
   clearDestination()
   accumulatedFare=activeTariff.base
   renderExtras(); update()
@@ -2038,8 +2032,10 @@ function receiptText(t){
     t.extras.forEach(x=>{ r += "\n  "+x.label+": "+money(x.amount) })
   }
   r += "\nTOTAL TO PAY: "+money(t.fare)
-  if(t.quotedLow !== "" && t.quotedLow !== undefined && t.quotedLow !== null)
+  if(t.quotedLow !== "" && t.quotedLow !== undefined && t.quotedLow !== null){
     r += "\n\nQuoted range: "+money(t.quotedLow)+" to "+money(t.quotedHigh)
+    if(t.quotedFrom) r += "\nQuoted from: "+t.quotedFrom
+  }
   if(Number(t.estimatedMiles) > 0)
     r += "\nEstimated distance while backgrounded: "+t.estimatedMiles+" mi"
   r += "\nStart: "+(t.start?"https://maps.google.com/?q="+t.start.lat+","+t.start.lng:"N/A")+
@@ -2147,6 +2143,7 @@ function saveTrip(){
     destination: destination?destination.label:"",
     destLat: destination?destination.lat:"", destLng: destination?destination.lng:"",
     quotedLow: quoted?quoted.low:"", quotedHigh: quoted?quoted.high:"", quotedMiles: quoted?quoted.miles:"",
+    quotedFrom: quoted?quoted.from:"", pickupLabel: pickup?pickup.label:"",
     estimatedMiles: gapDistanceTotal>0?toMiles(gapDistanceTotal):"0.00", gapEvents: gapEventCount,
     runningMiles: toMiles(chargeableDistance), waitingTime: formatTime(waitingSeconds),
     driverId: validatedDriverId, driverName: validatedDriverName,
@@ -2236,13 +2233,43 @@ function updateDashboard(){
 
 /* ---------- Sync ---------- */
 
-async function syncToSheet(){
-  if(!validatedDriverId){ await tell("Not signed in","Verify your Driver ID before syncing."); navigate("signin"); return }
+/* ---------- Automatic upload ----------
+
+   Waiting for a driver to press Sync meant a completed fare could sit on a phone
+   for a whole shift, or never arrive at all. A finished trip now pushes itself
+   the moment it ends, and if that fails it keeps retrying on its own: when the
+   phone comes back to the foreground, when the browser reports the connection is
+   back, and on a widening timer in between. Rejected trips are excluded from the
+   retry loop, because retrying them forever would never succeed and would mask a
+   real backlog. */
+
+const SYNC_BACKOFF = [5000, 15000, 45000, 120000, 300000]
+let syncAttempt = 0, syncTimer = null, syncInFlight = false
+
+function queuedTrips(){ return readTrips().filter(t => !t.synced && !t.rejected) }
+
+function scheduleSync(){
+  if(syncTimer || syncInFlight) return
+  if(!queuedTrips().length) return
+  const wait = SYNC_BACKOFF[Math.min(syncAttempt, SYNC_BACKOFF.length-1)]
+  syncTimer = setTimeout(()=>{ syncTimer = null; pushQueue() }, wait)
+}
+
+function cancelSync(){ clearTimeout(syncTimer); syncTimer = null }
+
+async function pushQueue(){
+  if(syncInFlight) return
+  if(!validatedDriverId) return          /* nothing to authenticate the upload with */
   let trips = readTrips()
-  const unsynced = trips.filter(t=>!t.synced)
-  if(!unsynced.length){ setStatus(syncStatus,"✓ All trips already synced.","ok"); return }
-  syncBtn.disabled=true
-  setStatus(syncStatus,"Syncing "+unsynced.length+" trip(s)…")
+  const unsynced = trips.filter(t => !t.synced && !t.rejected)
+  if(!unsynced.length){
+    syncAttempt = 0
+    const stuck = readTrips().filter(t => t.rejected && !t.synced).length
+    setStatus(syncStatus, stuck ? "" : "✓ Everything is on the office sheet.", stuck ? "" : "ok")
+    return
+  }
+  syncInFlight = true
+  setStatus(syncStatus,"Sending "+unsynced.length+" trip(s) to the office…")
   try{
     const json = await postToBackend({type:"sync",trips:unsynced}, 30000)
     if(json.status==="ok"){
@@ -2270,19 +2297,33 @@ async function syncToSheet(){
         }
         return t
       })
-      writeTrips(trips); renderHistory(); renderStuck()
+      writeTrips(trips); renderHistory(); renderStuck(); renderStorage()
 
-      let msg="✓ Synced "+json.inserted+" trip(s) at "+localTimestamp()
-      if(json.skipped>0) msg+=" ("+json.skipped+" duplicate(s) skipped)"
-      if(json.errors&&json.errors.length) msg+=" — "+json.errors.length+" rejected and still queued"
+      syncAttempt = 0
+      let msg = "✓ Sent "+json.inserted+" trip(s) to the office at "+localTimestamp()
+      if(json.skipped>0) msg += " ("+json.skipped+" already there)"
+      if(json.errors&&json.errors.length) msg += " — "+json.errors.length+" refused, see below"
       setStatus(syncStatus, msg, (json.errors&&json.errors.length) ? "warn2" : "ok")
     } else throw new Error(json.message||"Backend rejected the sync without giving a reason")
   }catch(err){
     console.error("[taxi] sync failed:",err,err && err.body ? err.body.slice(0,1000) : "")
-    reportBackendError(syncStatus,err,"sync")
+    syncAttempt++
+    const left = queuedTrips().length
+    const wait = Math.round(SYNC_BACKOFF[Math.min(syncAttempt, SYNC_BACKOFF.length-1)]/1000)
+    setStatus(syncStatus,
+      "⚠ " + ((err && err.friendly) || "Could not reach the office") +
+      " " + left + " trip(s) waiting. Trying again in " + wait + "s — nothing is lost.", "warn2")
+  }finally{
+    syncInFlight = false
   }
-  syncBtn.disabled=false
+  scheduleSync()
 }
+
+/* Every event that could plausibly mean "the connection is back". */
+window.addEventListener("online", ()=>{ syncAttempt = 0; cancelSync(); pushQueue() })
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState === "visible"){ syncAttempt = 0; cancelSync(); pushQueue() }
+})
 
 /* A trip the office refuses for a real reason would otherwise sit in the queue
    for ever, failing on every sync with no way to clear it. */
@@ -2306,6 +2347,20 @@ $("discardBtn").addEventListener("click", async ()=>{
   renderHistory(); renderStuck(); updateDashboard()
   setStatus(syncStatus,"Rejected trips discarded.")
 })
+
+/* Shown when the History page opens, so the driver can see the queue is being
+   dealt with without there being anything to press. */
+function reportQueue(){
+  if(syncInFlight) return
+  const left = queuedTrips().length
+  if(!left){
+    const stuck = readTrips().filter(t => t.rejected && !t.synced).length
+    if(!stuck) setStatus(syncStatus,"✓ Everything is on the office sheet.","ok")
+    return
+  }
+  setStatus(syncStatus, left + " trip(s) waiting to reach the office. Retrying automatically.", "warn2")
+  scheduleSync()
+}
 
 function renderStorage(){ storeCount.textContent = readTrips().length }
 
@@ -2335,74 +2390,15 @@ function notifyOwner(driverId,driverName,action){
     .catch(err=>console.warn("[taxi] instant log not delivered:",err && err.message ? err.message : err))
 }
 
-/* ---------- Install ----------
-
-   Chrome fires beforeinstallprompt and lets the page raise the install sheet
-   itself. iOS never fires it and offers no programmatic route at all, so the
-   only honest thing to do there is name the two taps.
-
-   The card stays on screen after installing rather than disappearing, because
-   "is it actually installed, or are you looking at a browser tab" is the first
-   question worth asking when a driver rings up about the app behaving oddly. */
-
-let deferredInstall = null
-let installedNow = false        /* appinstalled fires in a tab that is still not standalone */
-
-function isStandalone(){
-  return (window.matchMedia && matchMedia("(display-mode: standalone)").matches) ||
-         navigator.standalone === true
-}
-
-function isIOS(){
-  const ua = navigator.userAgent
-  /* iPadOS reports itself as a Mac, so touch points are the only tell. */
-  return /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)
-}
-
-function renderInstall(){
-  const done = isStandalone() || installedNow
-  installState.textContent = done ? "Yes" : "No"
-  show(installBtn, !done && !!deferredInstall)
-  if(done || deferredInstall) installHint.textContent = ""
-  else if(isIOS())            installHint.textContent = "Tap the Share button, then Add to Home Screen."
-  else                        installHint.textContent = "Open your browser menu, then Install app."
-}
-
-window.addEventListener("beforeinstallprompt", e=>{
-  e.preventDefault()            /* suppresses Chrome's own banner in favour of the button */
-  deferredInstall = e
-  renderInstall()
-})
-
-window.addEventListener("appinstalled", ()=>{
-  installedNow = true
-  deferredInstall = null
-  renderInstall()
-})
-
-installBtn.addEventListener("click", async function(){
-  if(!deferredInstall) return
-  installBtn.disabled = true
-  try{
-    deferredInstall.prompt()
-    await deferredInstall.userChoice
-  }catch(e){ console.warn("[taxi] install prompt failed:", e) }
-  deferredInstall = null        /* the event can only be used once, dismissed or not */
-  installBtn.disabled = false
-  renderInstall()
-})
-
 /* ---------- Wiring ---------- */
 
 driverInput.addEventListener("input", onIdInput)
 driverInput.addEventListener("keydown", e=>{ if(e.key==="Enter") validateId() })
 verifyBtn.addEventListener("click", validateId)
-destSummary.addEventListener("click", expandDestCard)
 clearDestBtn.addEventListener("click", clearDestination)
 $("shareBtn").addEventListener("click", shareCurrentReceipt)
 $("copyBtn").addEventListener("click", copyCurrentReceipt)
 $("exportBtn").addEventListener("click", exportTrips)
-syncBtn.addEventListener("click", syncToSheet)
 $("healthBtn").addEventListener("click", healthCheck)
 $("signOutBtn").addEventListener("click", signOut)
 
@@ -2453,7 +2449,8 @@ if(wasRunning && validatedDriverId){
   driverInput.value=validatedDriverId
   setStatus(idStatus,"Trip in progress","ok")
   setGps("resuming")
-  if(destination){ destInput.value=destination.label; show(clearDestBtn,true); collapseDestCard() }
+  if(destination){ destInput.value=destination.label; show(clearDestBtn,true) }
+  if(pickup) pickupInput.value = pickup.label
   if(agreedFare !== null && agreedFare !== undefined) agreedInput.value = agreedFare
   keepScreenAwake()
   lastTickWall=Date.now()
@@ -2469,7 +2466,7 @@ if(wasRunning && validatedDriverId){
 }
 
 update(); renderHistory(); updateDashboard(); renderTariffTable(); renderStorage(); renderStuck()
-renderInstall()
+scheduleSync()   /* anything left queued from a previous shift goes out on its own */
 
 /* Offline first load. Without this, Leaflet is fetched from the network on every
    open and a driver's very first visit must have signal. */
