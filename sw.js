@@ -22,7 +22,7 @@
 
     Bump CACHE_VERSION on every deploy of index.html.  */
 
-const CACHE_VERSION = "taxi-meter-v4";
+const CACHE_VERSION = "taxi-meter-v6";
 
 const SHELL = [
   "./",

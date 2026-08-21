@@ -204,6 +204,27 @@ details.tech pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 0;font
 .btnRow{display:flex;gap:8px;margin-top:10px}
 #tollForm{margin-top:10px}
 
+/* ---------- Install ---------- */
+.steps{list-style:none;margin:0;padding:0}
+.steps li{display:flex;gap:14px;align-items:flex-start;padding:12px 0;
+  border-bottom:1px solid var(--line);font-size:16px;line-height:1.5}
+.steps li:last-child{border-bottom:none}
+.stepn{flex:0 0 28px;width:28px;height:28px;border-radius:999px;
+  background:var(--blueDeep);color:#fff;display:flex;align-items:center;justify-content:center;
+  font-size:14px;font-weight:700;margin-top:1px}
+details.more{background:var(--card);border-radius:16px;padding:14px 18px;margin-bottom:12px}
+details.more summary{font-size:17px;font-weight:600;cursor:pointer;padding:6px 0;color:var(--ink)}
+details.more summary:focus-visible{outline:3px solid var(--focusRing);outline-offset:2px}
+.installLead{color:var(--dim);font-size:15px;line-height:1.5;margin:0 0 18px}
+.installDone{background:var(--goodBg);border-left:3px solid var(--goodLine);border-radius:12px;
+  padding:16px;color:var(--goodInk2)}
+.installDone strong{color:var(--goodInk);display:block;font-size:18px;margin-bottom:4px}
+.deviceTag{font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;
+  background:var(--field);color:var(--dim);margin-left:8px;vertical-align:middle}
+.linkBtn{background:none;border:none;color:var(--infoInk);font-size:15px;font-weight:600;
+  text-decoration:underline;padding:12px;margin-top:4px;width:auto;display:block;
+  margin-left:auto;margin-right:auto}
+
 /* ---------- Theme picker ---------- */
 #themePicker{display:flex;gap:8px}
 #themePicker button{flex:1;margin-top:0;padding:12px 6px;font-size:15px;
@@ -275,6 +296,7 @@ details.tech pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 0;font
     <div id="idStatus" class="statusLine" role="status" aria-live="polite" aria-atomic="true"></div>
   </div>
   <p id="signinHint">Your ID is checked against the office record each time you sign in and again when you start a trip.</p>
+  <button type="button" class="linkBtn" id="signinInstallBtn">Put this on your Home Screen</button>
 </section>
 
 <!-- ============ HOME ============ -->
@@ -429,6 +451,18 @@ details.tech pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 0;font
   </div>
 </section>
 
+<!-- ============ INSTALL ============ -->
+<section class="page" id="page-install" aria-labelledby="h-install">
+  <h1 id="h-install" tabindex="-1">Put the meter on your phone</h1>
+  <p class="installLead">It gets its own icon on your Home Screen and opens full screen,
+     like any other app. Nothing to download from an app store.</p>
+  <div id="installBody"></div>
+  <p class="installLead" id="installFinally" style="margin-top:16px">Once it is on your Home Screen,
+     open it from there and enter the Driver ID the office gave you.</p>
+  <button type="button" class="ghost" id="installBackBtn">Back</button>
+  <button type="button" class="linkBtn" id="installShareBtn" hidden>Send this link to a driver</button>
+</section>
+
 <!-- ============ SETTINGS ============ -->
 <section class="page" id="page-settings" aria-labelledby="h-settings">
   <h1 id="h-settings" tabindex="-1">Settings</h1>
@@ -465,6 +499,11 @@ details.tech pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0 0;font
     <div class="row sm"><span>Trips held on this phone</span><span id="storeCount">0</span></div>
     <button type="button" class="reset" id="pruneBtn">Remove synced trips over 90 days old</button>
     <div id="pruneStatus" class="statusLine" role="status" aria-live="polite"></div>
+  </div>
+
+  <div class="card">
+    <h3>This phone</h3>
+    <button type="button" class="ghost" id="settingsInstallBtn">Put this on your Home Screen</button>
   </div>
 
   <div class="card">
@@ -880,17 +919,23 @@ $("themePicker").addEventListener("click", e=>{
    meter is running. The tab bar disappears mid trip so Stop is never one tap
    away from being lost. */
 
-const PAGES = ["signin","home","trip","summary","history","earnings","settings"]
+const PAGES = ["signin","home","trip","summary","history","earnings","settings","install"]
 const PAGE_TITLE = {signin:"Sign in", home:"Set up the job", trip:"Meter running",
                     summary:"Trip summary", history:"Trip history",
-                    earnings:"Earnings", settings:"Settings"}
+                    earnings:"Earnings", settings:"Settings", install:"Put this on your phone"}
 let currentPage = null
 let summaryContext = null    /* {mode:"live"|"past", trip, text} */
 const scrollMemory = {}
 
 function resolveRoute(want){
-  if(!validatedDriverId) return "signin"
+  /* Mid-trip lock comes first: nothing may take the driver off the meter. */
   if(running) return "trip"
+  /* The one page that does not need an ID, because it is the page a driver needs
+     BEFORE they have signed in even once. Putting the sign-in wall in front of the
+     install instructions would mean a new driver has to log in through the browser
+     to be told how to get off the browser. */
+  if(want === "install") return "install"
+  if(!validatedDriverId) return "signin"
   if(want === "summary") return summaryContext ? "summary" : "home"
   if(want === "signin" || want === "trip") return "home"
   return PAGES.indexOf(want) >= 0 ? want : "home"
@@ -923,9 +968,9 @@ function renderPage(name){
     if(el) el.classList.toggle("active", p === name)
   }
 
-  show(topBar, name !== "signin")
+  show(topBar, name !== "signin" && name !== "install")
 
-  const showTabs   = (name !== "signin" && name !== "trip" && name !== "summary")
+  const showTabs   = (name !== "signin" && name !== "trip" && name !== "summary" && name !== "install")
   const showAction = (name === "home" || name === "trip" || name === "summary")
   show(tabBar, showTabs)
   show(actionBar, showAction)
@@ -952,6 +997,7 @@ function renderPage(name){
   if(name === "history"){ renderHistory(); renderStuck(); reportQueue() }
   if(name === "earnings") updateDashboard()
   if(name === "settings"){ renderTariffTable(); renderStorage(); renderThemePicker() }
+  if(name === "install")  renderInstall()
   if(name === "summary")  renderSummary()
 
   document.title = (PAGE_TITLE[name] || "Taxi Meter") + " · Taxi Meter"
@@ -1001,6 +1047,131 @@ for(const el of [driverInput, destInput, pickupInput, agreedInput]){
   el.addEventListener("focus", ()=>{ bottomDock.style.display = "none"; syncDockPadding() })
   el.addEventListener("blur",  ()=>{ setTimeout(()=>{ if(currentPage) renderPage(currentPage) }, 120) })
 }
+
+/* ---------- Put this on your phone ----------
+
+   Safari and Chrome each have their own way in and neither is obvious, so the
+   page works out which device it is on and puts those steps first. The rest are
+   folded away rather than removed, because people hand phones to each other.
+
+   This is driver onboarding: a driver who has taken the app on gets the link from
+   the office, puts it on their phone, then signs in with the ID they were issued.
+   Passengers never open the app — the only thing that reaches them is a shared
+   receipt — so nothing here is written for them.
+
+   Deliberately no explanation of what the app does or why. Whoever is reading it
+   has already been told. It is instructions and nothing else. */
+
+let INSTALL_PROMPT = null
+
+function isStandalone(){
+  return (matchMedia && matchMedia("(display-mode: standalone)").matches) ||
+         navigator.standalone === true
+}
+
+function deviceKind(){
+  const ua = navigator.userAgent
+  const iOS = /iPad|iPhone|iPod/.test(ua) ||
+              (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  if(iOS) return /CriOS|FxiOS|EdgiOS/.test(ua) ? "ios-other" : "ios"
+  if(/Android/.test(ua)) return "android"
+  return "desktop"
+}
+
+const STEP = (n, html) => "<li><span class='stepn' aria-hidden='true'>" + n + "</span><div>" + html + "</div></li>"
+
+const INSTALL_STEPS = {
+  ios: [
+    STEP(1, "Open this page in <strong>Safari</strong>. It has to be Safari — no other browser on an iPhone or iPad is allowed to add an app to the Home Screen."),
+    STEP(2, "Tap the <strong>Share</strong> button, the square with an arrow coming out of the top. It is at the bottom of the screen, or top right on an iPad."),
+    STEP(3, "Scroll down the list and tap <strong>Add to Home Screen</strong>."),
+    STEP(4, "Tap <strong>Add</strong>. The icon appears on your Home Screen.")
+  ].join(""),
+  android: [
+    STEP(1, "Open this page in <strong>Chrome</strong>."),
+    STEP(2, "Tap the <strong>⋮</strong> menu at the top right."),
+    STEP(3, "Tap <strong>Install app</strong>, or <strong>Add to Home screen</strong> if that is what you see. They do the same thing."),
+    STEP(4, "Confirm with <strong>Install</strong>. The icon appears on your Home Screen.")
+  ].join(""),
+  desktop: [
+    STEP(1, "Open this page in <strong>Chrome</strong> or <strong>Edge</strong>."),
+    STEP(2, "Look in the address bar for the install icon, a small screen with a downward arrow. Or open the <strong>⋮</strong> menu and choose <strong>Install…</strong>"),
+    STEP(3, "Confirm. It opens in a window of its own.")
+  ].join("")
+}
+
+const INSTALL_TITLES = {
+  ios:"On an iPhone or iPad", "ios-other":"On an iPhone or iPad",
+  android:"On an Android phone", desktop:"On a computer"
+}
+
+function renderInstall(){
+  const body = $("installBody")
+  const d = deviceKind()
+
+  show($("installShareBtn"), !!navigator.share)
+
+  if(isStandalone()){
+    body.innerHTML = "<div class='installDone'><strong>Already done</strong>" +
+      "You are looking at the installed app right now.</div>"
+    show($("installFinally"), !validatedDriverId)
+    return
+  }
+  show($("installFinally"), true)
+
+  const mine = d === "ios-other"
+    ? "<div class='warn'>You are on an iPhone or iPad but not in Safari. Only <strong>Safari</strong> can " +
+      "add an app to the Home Screen. Open this same address in Safari, then follow the steps below.</div>" +
+      INSTALL_STEPS.ios
+    : INSTALL_STEPS[d]
+
+  const others = ["ios","android","desktop"].filter(k => k !== d && !(d === "ios-other" && k === "ios"))
+
+  body.innerHTML =
+    "<div id='promptWrap'></div>" +
+    "<div class='card'><h3 style='margin-bottom:4px'>" + esc(INSTALL_TITLES[d]) +
+      "<span class='deviceTag'>your device</span></h3>" +
+      "<ol class='steps'>" + mine + "</ol></div>" +
+    others.map(k =>
+      "<details class='more'><summary>" + esc(INSTALL_TITLES[k]) + "</summary>" +
+      "<ol class='steps' style='margin-top:8px'>" + INSTALL_STEPS[k] + "</ol></details>").join("")
+
+  offerNativeInstall()
+}
+
+/* Chrome hands over a real install prompt when the page qualifies. One tap beats
+   any list of steps, so it is offered above them when it is available. */
+function offerNativeInstall(){
+  const wrap = $("promptWrap")
+  if(!wrap || !INSTALL_PROMPT) return
+  wrap.innerHTML =
+    "<div class='card'><h3>One tap</h3>" +
+    "<p style='font-size:14px;color:var(--dim);line-height:1.5;margin:0 0 10px'>" +
+    "Your browser can do this directly — no need for the steps below.</p>" +
+    "<button type='button' class='start' id='nativeInstallBtn'>Add to Home Screen</button>" +
+    "<div id='nativeInstallMsg' class='statusLine' role='status' aria-live='polite'></div></div>"
+  $("nativeInstallBtn").addEventListener("click", async ()=>{
+    const p = INSTALL_PROMPT
+    if(!p) return
+    p.prompt()
+    const res = await p.userChoice.catch(()=>({outcome:"dismissed"}))
+    INSTALL_PROMPT = null
+    setStatus($("nativeInstallMsg"), res.outcome === "accepted"
+      ? "✓ Done. Look for the icon on your Home Screen."
+      : "No problem — the steps below do the same thing.",
+      res.outcome === "accepted" ? "ok" : "")
+  })
+}
+
+addEventListener("beforeinstallprompt", e=>{
+  e.preventDefault()
+  INSTALL_PROMPT = e
+  if(currentPage === "install") offerNativeInstall()
+})
+addEventListener("appinstalled", ()=>{
+  INSTALL_PROMPT = null
+  if(currentPage === "install") renderInstall()
+})
 
 /* ---------- Driver ID ---------- */
 
@@ -2400,6 +2571,18 @@ $("shareBtn").addEventListener("click", shareCurrentReceipt)
 $("copyBtn").addEventListener("click", copyCurrentReceipt)
 $("exportBtn").addEventListener("click", exportTrips)
 $("healthBtn").addEventListener("click", healthCheck)
+$("signinInstallBtn").addEventListener("click", ()=>navigate("install"))
+$("settingsInstallBtn").addEventListener("click", ()=>navigate("install"))
+$("installBackBtn").addEventListener("click", ()=>navigate(validatedDriverId ? "settings" : "signin"))
+$("installShareBtn").addEventListener("click", async ()=>{
+  /* How a new driver gets here in the first place: the office sends the link. */
+  const url = location.href.split("#")[0] + "#/install"
+  try{ await navigator.share({title:"Taxi Meter — set up on your phone", url}) }
+  catch(e){
+    if(e && e.name === "AbortError") return
+    try{ await navigator.clipboard.writeText(url) }catch(err){}
+  }
+})
 $("signOutBtn").addEventListener("click", signOut)
 
 actionBtn.addEventListener("click", function(){
