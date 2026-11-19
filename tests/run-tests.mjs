@@ -125,7 +125,7 @@ t("file names", () => {
   eq(P.fileName("statement", P.periodRange("last-month", day(2026, 11, 20))), "Earnings statement 2026-10-01 to 2026-10-31.pdf");
 });
 
-/* ---------- Code.gs: the vehicle check ---------- */
+/* ---------- Code.gs ---------- */
 function loadGas(sheets) {
   const { g, book } = makeGas(sheets, { APP_SECRET: "test-secret" });
   vm.createContext(g); vm.runInContext(read("Code.gs"), g);
@@ -133,40 +133,6 @@ function loadGas(sheets) {
 }
 const drivers = () => new FakeSheet("Drivers", [["Driver ID", "Name", "Active (TRUE/FALSE)"], ["TX-AAAAA", "Ann Driver", true], ["TX-BBBBB", "Off Driver", false]]);
 const post = (g, body) => JSON.parse(g.doPost({ postData: { contents: JSON.stringify(body) } }).text);
-const goodCheck = { checkId: "c-1", date: "19/11/2026, 07:55:10", vehicle: "AB12 CDE", odometer: "84210", outcome: "Unfit", defects: "Brakes (critical): pedal sinks", advisories: "", renewals: "Insurance 01/01/2027" };
-
-t("a check is filed by header, once", () => {
-  const { g, book } = loadGas({ Drivers: drivers() });
-  const token = g.makeToken_("TX-AAAAA");
-  eq(post(g, { type: "vehicleCheck", token, check: goodCheck }).status, "ok");
-  const r2 = post(g, { type: "vehicleCheck", token, check: goodCheck });
-  eq([r2.status, r2.duplicate], ["ok", true]);
-  const sh = book.sheets["Vehicle Checks"];
-  eq(sh.rows[0], g.CHECK_HEADERS.slice());
-  eq(sh.getLastRow(), 2);
-  const row = Object.fromEntries(sh.rows[0].map((h, i) => [h, sh.rows[1][i]]));
-  eq([row["Driver Name"], row["Outcome"], row["Odometer"], row["Check ID"]], ["Ann Driver", "Unfit", 84210, "c-1"]);
-  ok(row["Check Date"] instanceof Date || Object.prototype.toString.call(row["Check Date"]) === "[object Date]", "date not a Date");
-});
-t("the office's own column order and extra columns are respected", () => {
-  const sh = new FakeSheet("Vehicle Checks", [["Check ID", "Office note", "Outcome"]]);
-  const { g } = loadGas({ Drivers: drivers(), "Vehicle Checks": sh });
-  eq(post(g, { type: "vehicleCheck", token: g.makeToken_("TX-AAAAA"), check: goodCheck }).status, "ok");
-  eq(sh.rows[0].slice(0, 4), ["Check ID", "Office note", "Outcome", "Received"]);
-  eq([sh.rows[1][0], sh.rows[1][1], sh.rows[1][2]], ["c-1", "", "Unfit"]);
-});
-t("refusals: no token, suspended driver, bad outcome, bad date, formula injection", () => {
-  const { g, book } = loadGas({ Drivers: drivers() });
-  eq(post(g, { type: "vehicleCheck", check: goodCheck }).code, "badtoken");
-  eq(post(g, { type: "vehicleCheck", token: g.makeToken_("TX-BBBBB"), check: goodCheck }).code, "badtoken");
-  const tok = g.makeToken_("TX-AAAAA");
-  eq(post(g, { type: "vehicleCheck", token: tok, check: { ...goodCheck, outcome: "Fine-ish" } }).code, "invalid");
-  eq(post(g, { type: "vehicleCheck", token: tok, check: { ...goodCheck, date: "31/02/2026, 10:00:00" } }).code, "invalid");
-  eq(post(g, { type: "vehicleCheck", token: tok, check: { ...goodCheck, odometer: "-5" } }).code, "invalid");
-  eq(post(g, { type: "vehicleCheck", token: tok, check: { ...goodCheck, checkId: "c-2", vehicle: "=HYPERLINK(1)" } }).status, "ok");
-  const sh = book.sheets["Vehicle Checks"];
-  ok(String(sh.rows[1][sh.rows[0].indexOf("Vehicle")]).startsWith("'="), "not escaped");
-});
 t("validate and doGet carry the sheet version", () => {
   const { g } = loadGas({ Drivers: drivers() });
   eq(post(g, { type: "validate", driverId: "TX-AAAAA" }).version, g.SHEET_VERSION);
@@ -187,6 +153,14 @@ t("every $(\"id\") the script asks for is in the markup", () => {
 t("APP_VERSION matches the service worker's note", () => {
   const v = /const APP_VERSION = "([^"]+)"/.exec(html)[1];
   ok(read("sw.js").includes("app " + v), "sw.js CACHE_VERSION comment does not name app " + v);
+});
+t("vehicle checks stay on the phone: nothing about them is sent", () => {
+  const js = scripts.join("\n");
+  ok(!/type:\s*"vehicleCheck"/.test(js), "index.html still posts a vehicleCheck");
+  ok(!/vehicleCheck|Vehicle Checks/.test(read("Code.gs")), "Code.gs still files vehicle checks");
+  const pre = /async function preflightVehicle[\s\S]*?\n}\n/.exec(js)[0];
+  ok(!/postToBackend|notifyOwner/.test(pre), "the start-trip prompts report to the backend");
+  ok(/notifyOwner\(validatedDriverId,validatedDriverName,"Started Trip"\+\(destination\?" to "\+destination\.label:""\)\)/.test(js), "Started Trip log carries extra detail");
 });
 t("the service worker precaches the new files", () => {
   const sw = read("sw.js");

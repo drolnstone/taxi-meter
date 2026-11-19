@@ -1,38 +1,30 @@
 TAXI METER: DEPLOY NOTE
 
-YOU ARE ON:   app (no number shown) · sheet (no number shown) · sw cache taxi-meter-v7
-GOING TO:     app 1.8.0 · sheet 1.1.0 · sw cache taxi-meter-v8
+YOU ARE ON:   app 1.8.0 · sheet 1.1.0 · sw cache taxi-meter-v8 (or older, if PR #1 was never deployed)
+GOING TO:     app 1.8.1 · sheet 1.2.0 · sw cache taxi-meter-v9
 
-WHAT CHANGED (features taken from the minibus and ushers apps)
-- Vehicle tab: a daily vehicle check (Fine / Advisory / Defect on 28 items,
-  critical items marked) that goes to a new "Vehicle Checks" tab on the sheet.
-- Renewal dates for plate, badge, insurance, MOT, DVLA licence and meter test,
-  with reminders on the meter screen 60, 30 and 7 days out.
-- Before a trip: asked if plate, badge, insurance or MOT has run out, or if
-  today's check found a critical defect. Going ahead is noted on the Log tab.
-  Asked once a day if no check has been done.
-- Save a receipt as a PDF (Trip complete screen, and any past trip).
-- Earnings statement PDF for this week, last week, this month, last month or
-  the tax year to date (Earnings tab).
-- Settings shows "App 1.8.0 · Sheet 1.1.0".
-- tests/run-tests.mjs and a Tests workflow on GitHub.
+WHAT CHANGED
+The vehicle is the driver's own, so the Vehicle tab is now private to the driver:
+- Vehicle checks, defects and renewal dates stay on the driver's phone. They are
+  no longer sent to the sheet, and the sheet no longer has a "Vehicle Checks" tab
+  or the "Show vehicle checks with defects" menu item.
+- The start-trip prompts (expired documents, critical defect, no check today)
+  are still asked, but the driver's answer is no longer noted on the Log tab.
+- Wording on the Vehicle tab says the checks are saved on this phone only.
+Trips, fares, receipts, PDFs and versions are unchanged.
 
 DEPLOY
 1. Paste Code.gs into the Apps Script editor, save, then
    Deploy → Manage deployments → edit → New version.
 2. Publish index.html, sw.js, vehicle.js, pdf.js and the vendor/ folder to the
-   same place as before (all in the same folder, vendor/ beside index.html).
-3. Reload the spreadsheet. Nothing to migrate: the "Vehicle Checks" tab is
-   made by the first check sent.
+   same folder as before.
+3. If a "Vehicle Checks" tab was already made by the last version, you can
+   delete it. Nothing reads it any more.
 
 CHECKS AFTERWARDS
-A. Open the deployment URL in a browser: it shows "version": "1.1.0".
-B. On a phone: Settings → Test connection. The line under it reads
-   App 1.8.0 · Sheet 1.1.0.
-C. Vehicle tab → Start today's check → Mark the rest Fine → Send.
-   "Recent checks" shows "on the office record", and the sheet has a row on
-   "Vehicle Checks".
-D. Put yesterday's date as Insurance. Meter tab shows it in red, and Start trip
-   asks before starting. Cancel, then clear the date.
-E. Finish a short trip, press Save as PDF. Earnings → Make a PDF statement.
-F. Spreadsheet: Taxi Meter → Show vehicle checks with defects.
+A. Open the deployment URL in a browser: it shows "version": "1.2.0".
+B. On a phone: Settings → Test connection reads App 1.8.1 · Sheet 1.2.0.
+C. Vehicle tab → do a check and send it. "Recent checks" lists it, and nothing
+   new appears on the sheet.
+D. Start a trip with no check done today: asked once. The Log tab says only
+   "Started Trip".

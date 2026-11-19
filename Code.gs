@@ -38,7 +38,7 @@
 /* Printed on the phone's Settings screen beside the app's own version, so
    "is the new sheet code live" can be answered from the car. Bump on every
    change to this file. (The minibus app's "versions on the foot".) */
-var SHEET_VERSION = "1.1.0";
+var SHEET_VERSION = "1.2.0";
 
 var TRIP_ID_COL   = 11;   /* column K. Change this too if the sheet is ever reordered. */
 var TRIP_DATE_COL = 4;    /* column D. Must hold real dates or Summary reads zero. */
@@ -65,13 +65,6 @@ var MAX_EXTRAS_PER_TRIP = 8;
 var DRIVER_HEADERS = ["Driver ID", "Name", "Active (TRUE/FALSE)"];
 var LOG_HEADERS    = ["Timestamp", "Driver ID", "Driver Name", "Action", "App Timestamp"];
 
-/* The daily vehicle check, from the phone's Vehicle tab. Written by header
-   name, never by column number (the minibus sheet's rule), so the office can
-   move or add columns freely: a missing header is added at the end. */
-var CHECK_SHEET    = "Vehicle Checks";
-var CHECK_HEADERS  = ["Received", "Driver ID", "Driver Name", "Check Date", "Vehicle",
-                      "Odometer", "Outcome", "Defects", "Advisories", "Renewal Dates", "Check ID"];
-var CHECK_OUTCOMES = ["Fit", "Fit with advisories", "Defects found", "Unfit"];
 /* "Peak" is the P rate on the council card. "Holiday" is kept so trips queued on a
    phone running the previous build still sync instead of being rejected. */
 var VALID_TARIFFS  = ["Day", "Night", "Peak", "Extra", "Holiday"];
@@ -99,8 +92,6 @@ function onOpen() {
     .addItem("Check security setup", "checkSecuritySetup")
     .addSeparator()
     .addItem("Create missing sheets (fresh install)", "setupHeaders")
-    .addSeparator()
-    .addItem("Show vehicle checks with defects", "showOpenDefects")
     .addToUi();
 }
 
@@ -211,7 +202,6 @@ function doPost(e) {
     if (type === "route")      return handleRoute(sheet, data);
     if (type === "instantLog") return handleInstantLog(sheet, data);
     if (type === "sync")       return handleSync(sheet, data);
-    if (type === "vehicleCheck") return handleVehicleCheck(sheet, data);
 
     return respond({ status: "error", message: "Unknown request type: " + type });
 
@@ -373,133 +363,6 @@ function handleInstantLog(sheet, data) {
   }
 
   return respond({ status: "ok" });
-}
-
-/* ============================================================
-   Daily vehicle check
-   ============================================================ */
-
-/* One row per check. The Check ID is made on the phone, so a retry after a
-   lost reply is filed once (the minibus app's offline rule). */
-function handleVehicleCheck(sheet, data) {
-  var driverId = readToken_(data.token);
-  if (!driverId) return badToken_();
-
-  var whoIs = lookupDriver(sheet, driverId);
-  if (!whoIs.valid || !whoIs.active) {
-    return respond({ status: "error", code: "badtoken", message: "Driver account is no longer active." });
-  }
-  if (!rateLimitOk_(driverId, "check", 30)) {
-    return respond({ status: "error", message: "Too many vehicle checks this hour." });
-  }
-
-  var c = data.check || {};
-  var why = validateCheck_(c);
-  if (why) return respond({ status: "error", code: "invalid", message: why });
-
-  var lock = LockService.getScriptLock();
-  var acquired = false;
-  try {
-    lock.waitLock(10000);
-    acquired = true;
-    var sh = sheet.getSheetByName(CHECK_SHEET) || sheet.insertSheet(CHECK_SHEET);
-    var cols = ensureHeaders_(sh, CHECK_HEADERS);
-    var id = String(c.checkId).trim();
-    if (columnHas_(sh, cols["Check ID"], id)) return respond({ status: "ok", duplicate: true, checkId: id });
-
-    var row = {
-      "Received":      Utilities.formatDate(new Date(), "Europe/London", "dd/MM/yyyy, HH:mm:ss"),
-      "Driver ID":     driverId,
-      "Driver Name":   whoIs.name,
-      "Check Date":    parseUkDate_(c.date),
-      "Vehicle":       sanitiseCell_(c.vehicle),
-      "Odometer":      numOrBlank(c.odometer),
-      "Outcome":       c.outcome,
-      "Defects":       sanitiseCell_(c.defects),
-      "Advisories":    sanitiseCell_(c.advisories),
-      "Renewal Dates": sanitiseCell_(c.renewals),
-      "Check ID":      id
-    };
-    appendByHeader_(sh, cols, row);
-  } catch (err) {
-    Logger.log("vehicleCheck: " + (err && err.stack ? err.stack : err));
-    return respond({ status: "error", message: "Vehicle check not written: " + (err && err.message ? err.message : err) });
-  } finally {
-    if (acquired) lock.releaseLock();
-  }
-  return respond({ status: "ok", duplicate: false, checkId: String(c.checkId).trim() });
-}
-
-/* Returns a reason the check cannot be filed, or "" when it can. */
-function validateCheck_(c) {
-  if (!c || typeof c !== "object") return "No vehicle check supplied.";
-  var id = String(c.checkId || "").trim();
-  if (!id || id.length > 64) return "The check has no ID.";
-  if (!parseUkDate_(c.date)) return "The check date could not be read: " + String(c.date || "").substring(0, 40);
-  if (CHECK_OUTCOMES.indexOf(c.outcome) < 0) return "Unknown outcome: " + String(c.outcome || "").substring(0, 40);
-  if (c.odometer !== undefined && c.odometer !== "" && c.odometer !== null) {
-    var n = Number(c.odometer);
-    if (isNaN(n) || n < 0 || n > 2000000) return "The odometer reading is not a mileage.";
-  }
-  return "";
-}
-
-/* Header-driven access, after the minibus sheet's headerMap()/colOf():
-   { header: column number }. Missing headers are added at the end and an
-   existing header is never relabelled. */
-function ensureHeaders_(sh, wanted) {
-  var width = Math.max(sh.getLastColumn(), 1);
-  var head = sh.getLastRow() >= 1 ? sh.getRange(1, 1, 1, width).getValues()[0] : [];
-  var map = {};
-  head.forEach(function (h, i) { var k = String(h || "").trim(); if (k && !map[k]) map[k] = i + 1; });
-  var next = 1;   /* just past the last header that has a name */
-  head.forEach(function (h, i) { if (String(h || "").trim()) next = i + 2; });
-  wanted.forEach(function (h) {
-    if (map[h]) return;
-    if (next > sh.getMaxColumns()) sh.insertColumnsAfter(sh.getMaxColumns(), next - sh.getMaxColumns());
-    sh.getRange(1, next).setValue(h).setFontWeight("bold");
-    map[h] = next++;
-  });
-  if (sh.getFrozenRows() < 1) sh.setFrozenRows(1);
-  return map;
-}
-
-function appendByHeader_(sh, cols, obj) {
-  var width = 0;
-  Object.keys(cols).forEach(function (k) { width = Math.max(width, cols[k]); });
-  var row = [];
-  for (var i = 0; i < width; i++) row.push("");
-  Object.keys(obj).forEach(function (k) { if (cols[k]) row[cols[k] - 1] = obj[k]; });
-  sh.appendRow(row);
-}
-
-/* Recent rows only: a retry is always recent. */
-function columnHas_(sh, col, value) {
-  var last = sh.getLastRow();
-  if (last < 2 || !col) return false;
-  var from = Math.max(2, last - 2000);
-  var vals = sh.getRange(from, col, last - from + 1, 1).getValues();
-  for (var i = 0; i < vals.length; i++) if (String(vals[i][0]).trim() === value) return true;
-  return false;
-}
-
-/* Menu: the last 30 days of checks that found something, newest first. */
-function showOpenDefects() {
-  var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CHECK_SHEET);
-  if (!sh || sh.getLastRow() < 2) { toast("No vehicle checks on the sheet yet."); return; }
-  var cols = ensureHeaders_(sh, CHECK_HEADERS);
-  var rows = sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).getValues();
-  var since = Date.now() - 30 * 86400000, out = [];
-  rows.forEach(function (r) {
-    var outcome = String(r[cols["Outcome"] - 1] || "");
-    var when = r[cols["Check Date"] - 1];
-    if (outcome !== "Unfit" && outcome !== "Defects found") return;
-    if (when instanceof Date && when.getTime() < since) return;
-    out.push((when instanceof Date ? Utilities.formatDate(when, "Europe/London", "dd/MM/yyyy") : String(when)) +
-             "  " + r[cols["Driver Name"] - 1] + "  " + r[cols["Vehicle"] - 1] + "  " + outcome +
-             ": " + r[cols["Defects"] - 1]);
-  });
-  toast(out.length ? out.reverse().slice(0, 25).join("\n") : "No defects reported in the last 30 days.");
 }
 
 function handleSync(sheet, data) {
@@ -1233,8 +1096,6 @@ function setupHeaders() {
 
   var log = ss.getSheetByName("Log") || ss.insertSheet("Log");
   if (log.getLastRow() === 0) log.appendRow(LOG_HEADERS);
-
-  ensureHeaders_(ss.getSheetByName(CHECK_SHEET) || ss.insertSheet(CHECK_SHEET), CHECK_HEADERS);
 
   fixHeaders();
 }

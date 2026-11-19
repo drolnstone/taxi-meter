@@ -22,7 +22,7 @@
 
     Bump CACHE_VERSION on every deploy of index.html, vehicle.js or pdf.js.  */
 
-const CACHE_VERSION = "taxi-meter-v8";   /* app 1.8.0 */
+const CACHE_VERSION = "taxi-meter-v9";   /* app 1.8.1 */
 
 const SHELL = [
   "./",
