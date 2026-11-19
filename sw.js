@@ -20,14 +20,22 @@
                                                            records must not be
                                                            served stale, ever)
 
-    Bump CACHE_VERSION on every deploy of index.html.  */
+    Bump CACHE_VERSION on every deploy of index.html, vehicle.js or pdf.js.  */
 
-const CACHE_VERSION = "taxi-meter-v7";
+const CACHE_VERSION = "taxi-meter-v8";   /* app 1.8.0 */
 
 const SHELL = [
   "./",
   "./index.html",
-  "./manifest.json"
+  "./manifest.json",
+  "./vehicle.js",
+  "./pdf.js"
+];
+
+/* The PDF writer (jsPDF 4.2.1, MIT) never changes without a new file name, so
+   it is cache first like Leaflet. Precached so a receipt can be made offline. */
+const LOCAL_VENDOR = [
+  "./vendor/jspdf.umd.min.js"
 ];
 
 const VENDOR = [
@@ -40,7 +48,7 @@ self.addEventListener("install", event => {
     const cache = await caches.open(CACHE_VERSION);
     /* Individually, so one unreachable vendor URL cannot fail the whole install
        and leave the driver with no offline copy at all. */
-    await Promise.all(SHELL.concat(VENDOR).map(async url => {
+    await Promise.all(SHELL.concat(LOCAL_VENDOR, VENDOR).map(async url => {
       try { await cache.add(new Request(url, { cache: "reload" })); }
       catch (e) { console.warn("[sw] could not precache", url, e); }
     }));
@@ -73,7 +81,8 @@ self.addEventListener("fetch", event => {
      stale driver record could let a suspended ID start a job. */
   if (isBackend(url) || isTile(url)) return;
 
-  if (VENDOR.indexOf(url) !== -1) {
+  const path = new URL(url).pathname;
+  if (VENDOR.indexOf(url) !== -1 || /\/vendor\//.test(path)) {
     event.respondWith((async () => {
       const hit = await caches.match(req);
       if (hit) return hit;
@@ -84,16 +93,19 @@ self.addEventListener("fetch", event => {
     return;
   }
 
-  if (req.mode === "navigate" || /\.(html|json)$/.test(new URL(url).pathname) ||
-      new URL(url).pathname.endsWith("/")) {
+  /* .js too: vehicle.js and pdf.js change with index.html, and without a
+     fallback here the meter opened offline would load without them. */
+  if (req.mode === "navigate" || /\.(html|json|js)$/.test(path) || path.endsWith("/")) {
     event.respondWith((async () => {
       try {
         const res = await fetch(req);
         if (res && res.ok) (await caches.open(CACHE_VERSION)).put(req, res.clone());
         return res;
       } catch (e) {
-        const hit = await caches.match(req) || await caches.match("./index.html");
+        const hit = await caches.match(req) ||
+                    (req.mode === "navigate" ? await caches.match("./index.html") : null);
         if (hit) return hit;
+        if (req.mode !== "navigate") return Response.error();
         return new Response(
           "<!doctype html><meta charset=utf-8><title>Offline</title>" +
           "<body style='font:16px system-ui;background:#0b0b0b;color:#fff;padding:32px'>" +

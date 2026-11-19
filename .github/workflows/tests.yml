@@ -1,0 +1,22 @@
+# Runs tests/run-tests.mjs on every pull request and every push to main.
+# Same shape as the minibus and ushers repos' Tests workflow.
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # London time, as the drivers' phones read it.
+      - run: node tests/run-tests.mjs
+        env:
+          TZ: Europe/London

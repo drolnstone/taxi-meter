@@ -261,6 +261,42 @@ details.more summary:focus-visible{outline:3px solid var(--focusRing);outline-of
 #sheetTitle{font-size:21px;font-weight:700;margin:0 0 8px;color:var(--ink)}
 #sheetBody{font-size:16px;color:var(--ink2);line-height:1.5;margin:0 0 6px;white-space:pre-line}
 
+/* ---------- Vehicle check and renewals (ported from the minibus app) ---------- */
+#vehicleBanner{margin-bottom:18px}
+#vehicleBanner:empty{display:none}
+.vbLine{border-radius:12px;padding:12px 14px;margin-bottom:8px;font-size:15px;line-height:1.45;
+  background:var(--infoBg);border-left:3px solid var(--infoLine);color:var(--infoInk2)}
+.vbLine.warn{background:var(--warnBg);border-left-color:var(--warnLine);color:var(--warnInk);margin-top:0}
+.vbLine.bad{background:var(--dangerBg);border-left-color:var(--dangerLine);color:var(--dangerInk)}
+.vbLine.good{background:var(--goodBg);border-left-color:var(--goodLine);color:var(--goodInk2)}
+.vbLine button{margin-top:8px;padding:10px;font-size:15px}
+.chkSection h3{margin:0 0 4px}
+.chkLede{font-size:13px;color:var(--dim);margin:0 0 8px}
+.chkItem{padding:12px 0;border-bottom:1px solid var(--line)}
+.chkItem:last-child{border-bottom:none}
+.chkName{font-size:17px;font-weight:600}
+.crit{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--dangerInk);
+  background:var(--dangerBg);border-radius:999px;padding:2px 8px;margin-left:6px;vertical-align:middle}
+.chkWhat{font-size:13px;color:var(--dim);line-height:1.45;margin:4px 0 8px}
+.chkMarks{display:flex;gap:6px}
+.chkMarks button{flex:1;margin:0;padding:11px 4px;font-size:15px;background:var(--field);color:var(--ink);
+  border:1px solid var(--line)}
+.chkMarks button[aria-pressed="true"][data-mark="fine"]{background:var(--greenDeep);border-color:var(--greenDeep);color:#fff}
+.chkMarks button[aria-pressed="true"][data-mark="advisory"]{background:var(--amberDeep);border-color:var(--amberDeep);color:#fff}
+.chkMarks button[aria-pressed="true"][data-mark="defect"]{background:var(--redDeep);border-color:var(--redDeep);color:#fff}
+.chkItem.missing{box-shadow:inset 3px 0 0 var(--dangerLine);padding-left:10px}
+.chkNote{margin-top:8px;font-size:16px}
+.outcome{font-size:22px;font-weight:700;text-align:center;margin:4px 0 6px}
+.outcome.Fit{color:var(--goodInk)} .outcome.Unfit{color:var(--statusBad)}
+.outcome.Defects{color:var(--statusBad)} .outcome.Advisories{color:var(--warnInk)}
+.renewRow{display:flex;gap:10px;align-items:center;margin-bottom:6px}
+.renewRow label{flex:1 1 50%;font-size:15px;color:var(--ink2)}
+.renewRow input{flex:1 1 50%;margin:0;font-size:16px;padding:10px}
+.renewNote{font-size:13px;color:var(--dim);line-height:1.5;margin:10px 0 0}
+.chkHist{font-size:14px;color:var(--ink2);padding:8px 0;border-bottom:1px solid var(--line)}
+.chkHist:last-child{border-bottom:none}
+#appVersions{font-size:13px;color:var(--dim);text-align:center;margin:8px 0 0}
+
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}
   button:active{transform:none}}
 @media (prefers-contrast:more){
@@ -302,6 +338,8 @@ details.more summary:focus-visible{outline:3px solid var(--focusRing);outline-of
 <!-- ============ HOME ============ -->
 <section class="page" id="page-home" aria-labelledby="h-home">
   <h1 id="h-home" tabindex="-1">Set up the job</h1>
+
+  <div id="vehicleBanner" aria-live="polite"></div>
 
   <div class="card" id="destCard">
     <h3>Quote a job</h3>
@@ -410,6 +448,7 @@ details.more summary:focus-visible{outline:3px solid var(--focusRing);outline-of
     <h3>Receipt</h3>
     <div id="receiptText"></div>
     <button type="button" class="export" id="shareBtn">Share receipt</button>
+    <button type="button" class="ghost" id="pdfReceiptBtn">Save as PDF</button>
     <button type="button" class="ghost" id="copyBtn">Copy to clipboard</button>
     <div id="shareStatus" class="statusLine" role="status" aria-live="polite" aria-atomic="true"></div>
   </div>
@@ -449,6 +488,62 @@ details.more summary:focus-visible{outline:3px solid var(--focusRing);outline-of
     <div class="row"><span>Average fare</span><span>£<span id="avgFare">0</span></span></div>
     <div class="row"><span>Trips recorded</span><span id="tripCount">0</span></div>
   </div>
+  <div class="card">
+    <h3>Earnings statement</h3>
+    <label class="fieldLabel" for="stmtPeriod">Period</label>
+    <select id="stmtPeriod">
+      <option value="this-week">This week</option>
+      <option value="last-week">Last week</option>
+      <option value="this-month">This month</option>
+      <option value="last-month">Last month</option>
+      <option value="tax-year">Tax year to date (from 6 April)</option>
+    </select>
+    <div id="stmtPreview"></div>
+    <button type="button" class="export" id="stmtBtn">Make a PDF statement</button>
+    <div id="stmtStatus" class="statusLine" role="status" aria-live="polite" aria-atomic="true"></div>
+  </div>
+</section>
+
+<!-- ============ VEHICLE ============ -->
+<section class="page" id="page-vehicle" aria-labelledby="h-vehicle">
+  <h1 id="h-vehicle" tabindex="-1">Vehicle</h1>
+
+  <div class="card">
+    <h3>Today's check</h3>
+    <div id="checkToday"></div>
+    <button type="button" class="start" id="checkStartBtn">Start today's check</button>
+  </div>
+
+  <div id="checkForm" hidden>
+    <div class="card">
+      <label class="fieldLabel" for="vehicleReg">Vehicle registration or plate number</label>
+      <input id="vehicleReg" type="text" placeholder="e.g. AB12 CDE" maxlength="20"
+             autocapitalize="characters" autocorrect="off" spellcheck="false" autocomplete="off">
+      <label class="fieldLabel" for="odometer">Odometer (miles)</label>
+      <input id="odometer" type="number" inputmode="numeric" min="0" step="1" placeholder="e.g. 84210">
+    </div>
+    <div id="checkItems"></div>
+    <div class="card">
+      <button type="button" class="reset" id="checkRestFine">Mark the rest Fine</button>
+      <div id="checkResult" class="statusLine" role="status" aria-live="polite" aria-atomic="true"></div>
+      <button type="button" class="start" id="checkSendBtn">Send the check</button>
+      <button type="button" class="ghost" id="checkCancelBtn">Put the check away</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Renewal dates</h3>
+    <div id="renewWarn"></div>
+    <div id="renewFields"></div>
+    <p class="renewNote">Kept on this phone. You are reminded 60, 30 and 7 days before each date, and asked before
+      a trip if your plate, badge, insurance or MOT has run out.</p>
+  </div>
+
+  <div class="card">
+    <h3>Recent checks</h3>
+    <div id="checkHistory"></div>
+    <div id="checkSync" class="statusLine" role="status" aria-live="polite" aria-atomic="true"></div>
+  </div>
 </section>
 
 <!-- ============ INSTALL ============ -->
@@ -476,6 +571,7 @@ details.more summary:focus-visible{outline:3px solid var(--focusRing);outline-of
     <h3>Backend</h3>
     <button type="button" class="ghost" id="healthBtn">Test connection</button>
     <div id="healthStatus" class="statusLine" role="status" aria-live="polite" aria-atomic="true"></div>
+    <p id="appVersions"></p>
   </div>
 
   <div class="card">
@@ -522,6 +618,7 @@ details.more summary:focus-visible{outline:3px solid var(--focusRing);outline-of
     <button type="button" data-route="home"><span class="ic" aria-hidden="true">🚕</span>Meter</button>
     <button type="button" data-route="history"><span class="ic" aria-hidden="true">🧾</span>History</button>
     <button type="button" data-route="earnings"><span class="ic" aria-hidden="true">📊</span>Earnings</button>
+    <button type="button" data-route="vehicle"><span class="ic" aria-hidden="true">🔧</span>Vehicle</button>
     <button type="button" data-route="settings"><span class="ic" aria-hidden="true">⚙️</span>Settings</button>
   </nav>
 </div>
@@ -537,8 +634,14 @@ details.more summary:focus-visible{outline:3px solid var(--focusRing);outline-of
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" onerror="window.__noMap=1"></script>
+<script src="vehicle.js"></script>
+<script src="pdf.js"></script>
 <script>
 "use strict";
+
+/* Printed on Settings with the sheet's own version (the minibus app's
+   "versions on the foot"). Bump with CACHE_VERSION in sw.js. */
+const APP_VERSION = "1.8.0"
 
 const SYNC_URL = "https://script.google.com/macros/s/AKfycbwfVdwML13iR7X_RQDB9ntchayc-byxHEWjp__Xcxiy9w0LmaepWt5VwAaYNd4BAppx/exec"
 
@@ -918,10 +1021,10 @@ $("themePicker").addEventListener("click", e=>{
    meter is running. The tab bar disappears mid trip so Stop is never one tap
    away from being lost. */
 
-const PAGES = ["signin","home","trip","summary","history","earnings","settings","install"]
+const PAGES = ["signin","home","trip","summary","history","earnings","vehicle","settings","install"]
 const PAGE_TITLE = {signin:"Sign in", home:"Set up the job", trip:"Meter running",
                     summary:"Trip summary", history:"Trip history",
-                    earnings:"Earnings", settings:"Settings", install:"Put this on your phone"}
+                    earnings:"Earnings", vehicle:"Vehicle", settings:"Settings", install:"Put this on your phone"}
 let currentPage = null
 let summaryContext = null    /* {mode:"live"|"past", trip, text} */
 const scrollMemory = {}
@@ -991,11 +1094,12 @@ function renderPage(name){
     if(on) b.setAttribute("aria-current","page"); else b.removeAttribute("aria-current")
   }
 
-  if(name === "home")     mountMap("mapHome")
+  if(name === "home")   { mountMap("mapHome"); renderVehicleBanner() }
   if(name === "trip")   { mountMap("mapTrip"); renderExtras() }
   if(name === "history"){ renderHistory(); renderStuck(); reportQueue() }
-  if(name === "earnings") updateDashboard()
-  if(name === "settings"){ renderTariffTable(); renderStorage(); renderThemePicker() }
+  if(name === "earnings"){ updateDashboard(); renderStatementPreview() }
+  if(name === "vehicle")  renderVehicle()
+  if(name === "settings"){ renderTariffTable(); renderStorage(); renderThemePicker(); renderVersions() }
   if(name === "install")  renderInstall()
   if(name === "summary")  renderSummary()
 
@@ -1285,6 +1389,7 @@ async function validateId(){
     if(json.valid && json.active){
       validatedDriverId=id; validatedDriverName=json.name
       sessionToken = json.token || null
+      noteSheetVersion(json.version)
       setStatus(idStatus, json.token ? "✓ ID verified" : "✓ ID verified (backend issued no session token)","ok")
       actionBtn.disabled=false; actionBtn.textContent="Start trip"
       try{ localStorage.lastDriverId = id }catch(e){}
@@ -1321,6 +1426,13 @@ async function healthCheck(){
   try{
     await postToBackend({type:"validate",driverId:validatedDriverId||"TX-00000"})
     setStatus(healthStatus,"✓ Backend reachable and returning JSON.","ok")
+    /* The GET answer carries the sheet code's version. Not fatal if it fails. */
+    try{
+      const ac = new AbortController(), t = setTimeout(()=>ac.abort(), BACKEND_TIMEOUT_MS)
+      const r = await fetch(SYNC_URL, {signal:ac.signal}); clearTimeout(t)
+      const j = await r.json()
+      noteSheetVersion(j.version || "older than 1.1.0")
+    }catch(e){ console.warn("[taxi] version check:", e) }
   }catch(err){ reportBackendError(healthStatus,err,"health check") }
 }
 
@@ -2120,6 +2232,9 @@ async function startTrip(){
     navigate("signin"); driverInput.focus(); return
   }
 
+  const confirmed = await preflightVehicle()
+  if(confirmed === null) return
+
   actionBtn.disabled=true; actionBtn.textContent="Checking…"
   try{
     const json = await postToBackend({type:"validate",driverId:validatedDriverId})
@@ -2136,7 +2251,8 @@ async function startTrip(){
     return
   }
 
-  notifyOwner(validatedDriverId,validatedDriverName,"Started Trip"+(destination?" to "+destination.label:""))
+  notifyOwner(validatedDriverId,validatedDriverName,"Started Trip"+(destination?" to "+destination.label:"")+
+    (confirmed.length ? " (driver confirmed: "+confirmed.join(", ")+")" : ""))
   running=true; startCoord=null; endCoord=null
   distance=0; elapsed=0; route=[]; if(mapOk) polyline.setLatLngs([])
   chargeableDistance=0; waitingSeconds=0; incrementsCharged=0
@@ -2439,6 +2555,7 @@ function cancelSync(){ clearTimeout(syncTimer); syncTimer = null }
 async function pushQueue(){
   if(syncInFlight) return
   if(!validatedDriverId) return          /* nothing to authenticate the upload with */
+  pushChecks()
   let trips = readTrips()
   const unsynced = trips.filter(t => !t.synced && !t.rejected)
   if(!unsynced.length){
@@ -2569,6 +2686,409 @@ function notifyOwner(driverId,driverName,action){
     .catch(err=>console.warn("[taxi] instant log not delivered:",err && err.message ? err.message : err))
 }
 
+/* ---------- Versions ---------- */
+
+function noteSheetVersion(v){
+  if(!v) return
+  try{ localStorage.sheetVersion = String(v).slice(0,40) }catch(e){}
+  renderVersions()
+}
+function renderVersions(){
+  const el = $("appVersions")
+  if(!el) return
+  let sheet = ""
+  try{ sheet = localStorage.sheetVersion || "" }catch(e){}
+  el.textContent = "App " + APP_VERSION + " · Sheet " + (sheet || "not known yet, press Test connection")
+}
+
+/* ---------- PDF receipts and statements ----------
+   Layout in pdf.js, from the minibus coordinator app. The writer is 400 KB, so
+   it is fetched the first time a PDF is made (and then kept by the service
+   worker), never on the way to the meter. */
+
+let pdfLibPromise = null
+function loadPdfLib(){
+  if(window.jspdf && window.jspdf.jsPDF) return Promise.resolve()
+  if(!pdfLibPromise) pdfLibPromise = new Promise((resolve, reject)=>{
+    const s = document.createElement("script")
+    s.src = "vendor/jspdf.umd.min.js"
+    s.onload = ()=> window.jspdf ? resolve() : reject(new Error("no writer"))
+    s.onerror = ()=>{ pdfLibPromise = null; reject(new Error("The PDF writer could not be loaded. Open the app once with a signal and try again.")) }
+    document.head.appendChild(s)
+  })
+  return pdfLibPromise
+}
+
+function pdfOptions(){
+  return { driver: validatedDriverName || "", driverId: validatedDriverId || "",
+           vehicle: readVehicleReg(), made: localTimestamp(), version: APP_VERSION }
+}
+
+/* Share sheet where the phone can share a file (so it can go straight to
+   WhatsApp or email), otherwise a download. */
+async function deliverPdf(doc, name, statusEl){
+  const blob = doc.output("blob")
+  try{
+    const file = new File([blob], name, {type:"application/pdf"})
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:name})
+      setStatus(statusEl, "✓ PDF shared.", "ok")
+      return
+    }
+  }catch(e){
+    if(e && e.name === "AbortError") return
+  }
+  const l = document.createElement("a")
+  l.href = URL.createObjectURL(blob); l.download = name
+  document.body.appendChild(l); l.click(); l.remove()
+  setTimeout(()=>URL.revokeObjectURL(l.href), 10000)
+  setStatus(statusEl, "✓ Saved " + name, "ok")
+}
+
+async function saveReceiptPdf(){
+  if(!summaryContext) return
+  setStatus(shareStatus, "Making the PDF…")
+  try{
+    await loadPdfLib()
+    const t = summaryContext.trip
+    await deliverPdf(TaxiPdf.receiptPdf(t, pdfOptions()), TaxiPdf.fileName("receipt", t), shareStatus)
+  }catch(err){
+    console.error("[taxi] receipt pdf:", err)
+    setStatus(shareStatus, "⚠ " + (err && err.message || "The PDF could not be made."), "bad")
+  }
+}
+
+function currentStatement(){
+  const range = TaxiPdf.periodRange($("stmtPeriod").value, new Date())
+  return TaxiPdf.buildStatement(readTrips(), range, parseLocalStamp)
+}
+
+function renderStatementPreview(){
+  const s = currentStatement()
+  $("stmtPreview").innerHTML =
+    "<div class='row sm'><span>"+esc(s.range.text)+"</span><span>"+s.count+" trip"+(s.count===1?"":"s")+"</span></div>"+
+    "<div class='row'><span>Taken</span><span>"+money(s.total)+"</span></div>"+
+    (s.extras ? "<div class='row sm'><span>of which extras</span><span>"+money(s.extras)+"</span></div>" : "")
+  setStatus($("stmtStatus"), "")
+}
+
+async function saveStatementPdf(){
+  const el = $("stmtStatus")
+  const s = currentStatement()
+  if(!s.count){ setStatus(el, "No trips on this phone in that period.", "warn2"); return }
+  setStatus(el, "Making the PDF…")
+  try{
+    await loadPdfLib()
+    await deliverPdf(TaxiPdf.statementPdf(s, pdfOptions()), TaxiPdf.fileName("statement", s.range), el)
+  }catch(err){
+    console.error("[taxi] statement pdf:", err)
+    setStatus(el, "⚠ " + (err && err.message || "The PDF could not be made."), "bad")
+  }
+}
+
+/* ---------- Daily vehicle check and renewal dates ----------
+   Ported from the minibus driver app's walkaround (Fine / Advisory / Defect on
+   every item, critical items, the check made on the phone with its own ID so a
+   retry is filed once) and its 60/30/7/0 day renewal warnings. The checklist
+   and the rules are in vehicle.js. */
+
+const CHECKS_KEY = "vehicleChecks", DRAFT_KEY = "checkDraft", RENEW_KEY = "renewals"
+const KEEP_CHECKS = 60
+
+function readJson(key, fallback){
+  try{ const v = JSON.parse(localStorage[key] || "null"); return v == null ? fallback : v }
+  catch(e){ return fallback }
+}
+function writeJson(key, v){
+  try{ localStorage[key] = JSON.stringify(v) }catch(e){ console.warn("[taxi] could not save " + key, e) }
+}
+function readChecks(){ const v = readJson(CHECKS_KEY, []); return Array.isArray(v) ? v : [] }
+function readRenewals(){ const v = readJson(RENEW_KEY, {}); return v && typeof v === "object" ? v : {} }
+function readVehicleReg(){ try{ return localStorage.vehicleReg || "" }catch(e){ return "" } }
+
+/* Today's latest check by whoever is signed in, or null. */
+function todaysCheck(){
+  const today = new Date().toDateString()
+  return readChecks().filter(c=>{
+    if(c.driverId && validatedDriverId && c.driverId !== validatedDriverId) return false
+    const d = parseLocalStamp(c.date)
+    return d && d.toDateString() === today
+  })[0] || null
+}
+
+function outcomeClass(o){
+  return o === "Fit" ? "Fit" : o === "Unfit" ? "Unfit" : o === "Defects found" ? "Defects" : "Advisories"
+}
+
+/* The meter screen's reminders: renewals 60 days out or nearer, and the
+   state of today's check. Nothing at all when everything is in order. */
+function renderVehicleBanner(){
+  const host = $("vehicleBanner")
+  if(!host) return
+  let html = ""
+  TaxiVehicle.renewalWarnings(readRenewals()).forEach(r=>{
+    const cls = (r.level === "expired" || r.level === "today") ? "bad"
+              : (r.level === "soon" || r.level === "due") ? "warn" : ""
+    html += "<div class='vbLine "+cls+"'>"+(cls === "bad" ? "⛔ " : "⏰ ")+esc(r.text)+"</div>"
+  })
+  if(validatedDriverId){
+    const c = todaysCheck()
+    if(!c) html += "<div class='vbLine'>No vehicle check yet today."+
+      "<button type='button' class='start' data-go='vehicle'>Do today's check</button></div>"
+    else if(c.outcome === "Unfit") html += "<div class='vbLine bad'>⛔ Today's check found a critical defect: "+
+      esc(c.defects)+". Do not carry passengers until it is fixed.</div>"
+    else if(c.outcome === "Defects found") html += "<div class='vbLine warn'>Today's check found: "+esc(c.defects)+"</div>"
+  }
+  host.innerHTML = html
+}
+$("vehicleBanner").addEventListener("click", e=>{
+  const b = e.target.closest("[data-go]")
+  if(b) navigate(b.dataset.go)
+})
+
+/* Asked before a trip starts. Returns the list of things the driver chose to
+   go ahead despite (for the office log), or null to stop. */
+async function preflightVehicle(){
+  const went = []
+  const expired = TaxiVehicle.blockingRenewals(readRenewals())
+  if(expired.length){
+    const ok = await ask("Your " + expired.map(r=>r.name.toLowerCase()).join(" and ") + (expired.length>1?" have":" has") + " run out",
+      expired.map(r=>r.text).join("\n") +
+      "\n\nIf you have renewed, put the new date on the Vehicle tab. Going ahead is your decision and goes on the office log.",
+      "Start the trip anyway", "stop")
+    if(!ok) return null
+    went.push("expired " + expired.map(r=>r.name).join(", "))
+  }
+  const c = todaysCheck()
+  if(c && c.outcome === "Unfit"){
+    const ok = await ask("Today's check found a critical defect",
+      c.defects + "\n\nDo not carry passengers until it is fixed. If it has been fixed, do the check again on the Vehicle tab.",
+      "Start the trip anyway", "stop")
+    if(!ok) return null
+    went.push("critical defect from today's check")
+  } else if(!c){
+    /* Once a day, not before every job. */
+    const today = new Date().toDateString()
+    let asked = ""
+    try{ asked = localStorage.noCheckAsked || "" }catch(e){}
+    if(asked !== today){
+      try{ localStorage.noCheckAsked = today }catch(e){}
+      const ok = await ask("No vehicle check yet today",
+        "It takes about two minutes and goes on the office record. Press Cancel to do it now.",
+        "Start without a check", "reset")
+      if(!ok){ navigate("vehicle"); return null }
+      went.push("no vehicle check today")
+    }
+  }
+  return went
+}
+
+/* ---- the check itself ---- */
+
+let checkDraft = readJson(DRAFT_KEY, null)   /* {results:{id:{mark,note}}} while a check is open */
+
+function saveDraft(){ if(checkDraft) writeJson(DRAFT_KEY, checkDraft); else try{ localStorage.removeItem(DRAFT_KEY) }catch(e){} }
+
+function renderVehicle(){
+  const c = todaysCheck()
+  const today = $("checkToday")
+  if(c){
+    today.innerHTML = "<div class='outcome "+outcomeClass(c.outcome)+"'>"+esc(c.outcome)+"</div>"+
+      "<div class='row sm'><span>Checked</span><span>"+esc(c.date)+"</span></div>"+
+      (c.vehicle ? "<div class='row sm'><span>Vehicle</span><span>"+esc(c.vehicle)+"</span></div>" : "")+
+      (c.defects ? "<div class='warn bad'>Defects: "+esc(c.defects)+"</div>" : "")+
+      (c.advisories ? "<div class='warn'>Advisories: "+esc(c.advisories)+"</div>" : "")
+    $("checkStartBtn").textContent = "Check again"
+  } else {
+    today.innerHTML = "<p class='chkLede'>Walk round the vehicle before your first job. Every item is Fine, Advisory "+
+      "(worth watching, still safe) or Defect. A defect on a critical item means no passengers until it is fixed.</p>"
+    $("checkStartBtn").textContent = "Start today's check"
+  }
+  show($("checkStartBtn"), !checkDraft)
+  show($("checkForm"), !!checkDraft)
+  if(checkDraft) renderCheckItems()
+  renderRenewals()
+  renderCheckHistory()
+}
+
+function renderCheckItems(){
+  if(!$("vehicleReg").value) $("vehicleReg").value = readVehicleReg()
+  const res = checkDraft.results || {}
+  let html = ""
+  TaxiVehicle.CHECK_SECTIONS.forEach(sec=>{
+    html += "<div class='card chkSection'><h3>"+esc(sec.title)+"</h3>"
+    sec.items.forEach(it=>{
+      const r = res[it.id] || {}
+      const needsNote = r.mark === "advisory" || r.mark === "defect"
+      html += "<div class='chkItem' data-item='"+it.id+"'>"+
+        "<div class='chkName'>"+esc(it.name)+(it.crit ? "<span class='crit'>critical</span>" : "")+"</div>"+
+        "<div class='chkWhat'>"+esc(it.what)+"</div>"+
+        "<div class='chkMarks' role='group' aria-label='"+esc(it.name)+"'>"+
+          TaxiVehicle.MARKS.map(m=>"<button type='button' data-mark='"+m+"' aria-pressed='"+(r.mark===m)+"'>"+
+            (m === "fine" ? "Fine" : m === "advisory" ? "Advisory" : "Defect")+"</button>").join("")+
+        "</div>"+
+        "<input class='chkNote' type='text' maxlength='140' aria-label='What you found: "+esc(it.name)+"'"+
+          " placeholder='"+(r.mark === "defect" ? "e.g. What is wrong and where (needed)" : "e.g. What you noticed")+"'"+
+          " value='"+esc(r.note || "")+"'"+(needsNote ? "" : " hidden")+">"+
+      "</div>"
+    })
+    html += "</div>"
+  })
+  $("checkItems").innerHTML = html
+}
+
+$("checkItems").addEventListener("click", e=>{
+  const b = e.target.closest("button[data-mark]")
+  if(!b || !checkDraft) return
+  const item = b.closest("[data-item]"), id = item.dataset.item
+  const r = checkDraft.results[id] || (checkDraft.results[id] = {mark:"", note:""})
+  r.mark = b.dataset.mark
+  for(const x of item.querySelectorAll("button[data-mark]")) x.setAttribute("aria-pressed", String(x === b))
+  const note = item.querySelector(".chkNote")
+  note.hidden = r.mark === "fine"
+  note.placeholder = r.mark === "defect" ? "e.g. What is wrong and where (needed)" : "e.g. What you noticed"
+  item.classList.remove("missing")
+  saveDraft()
+  if(r.mark !== "fine" && !note.value) note.focus()
+})
+$("checkItems").addEventListener("input", e=>{
+  if(!e.target.classList.contains("chkNote") || !checkDraft) return
+  const id = e.target.closest("[data-item]").dataset.item
+  const r = checkDraft.results[id] || (checkDraft.results[id] = {mark:"", note:""})
+  r.note = e.target.value
+  saveDraft()
+})
+
+$("checkStartBtn").addEventListener("click", ()=>{
+  checkDraft = {results:{}}
+  saveDraft(); renderVehicle()
+  const first = $("vehicleReg"); if(first && !first.value) first.focus()
+})
+$("checkCancelBtn").addEventListener("click", async ()=>{
+  const ok = await ask("Put the check away?", "What you have marked so far is cleared.", "Put it away", "reset")
+  if(!ok) return
+  checkDraft = null; saveDraft(); setStatus($("checkResult"), ""); renderVehicle()
+})
+$("checkRestFine").addEventListener("click", ()=>{
+  if(!checkDraft) return
+  TaxiVehicle.ALL_ITEMS.forEach(it=>{
+    if(!checkDraft.results[it.id] || !checkDraft.results[it.id].mark) checkDraft.results[it.id] = {mark:"fine", note:""}
+  })
+  saveDraft(); renderCheckItems()
+  setStatus($("checkResult"), "Everything you had not marked is now Fine. Look it over, then send.")
+})
+
+$("checkSendBtn").addEventListener("click", async ()=>{
+  if(!checkDraft) return
+  const el = $("checkResult")
+  const o = TaxiVehicle.checkOutcome(checkDraft.results)
+  for(const x of document.querySelectorAll(".chkItem.missing")) x.classList.remove("missing")
+  if(!o.complete){
+    const ids = o.missing.concat(o.needNote)
+    ids.forEach(id=>{ const n = document.querySelector(".chkItem[data-item='"+id+"']"); if(n) n.classList.add("missing") })
+    const first = document.querySelector(".chkItem[data-item='"+ids[0]+"']")
+    if(first) first.scrollIntoView({block:"center", behavior: REDUCE_MOTION ? "auto" : "smooth"})
+    setStatus(el, o.missing.length
+      ? o.missing.length + " item" + (o.missing.length===1?"":"s") + " not marked yet."
+      : "Say what is wrong for each defect.", "bad")
+    return
+  }
+  const reg = $("vehicleReg").value.trim().toUpperCase()
+  const odo = $("odometer").value.trim()
+  try{ localStorage.vehicleReg = reg }catch(e){}
+  const rec = {
+    checkId: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : "c-"+Date.now()+"-"+Math.random().toString(16).slice(2),
+    date: localTimestamp(), vehicle: reg, odometer: odo,
+    outcome: o.outcome,
+    defects: TaxiVehicle.describeFindings(o.defects),
+    advisories: TaxiVehicle.describeFindings(o.advisories),
+    renewals: TaxiVehicle.renewalSummary(readRenewals()),
+    driverId: validatedDriverId, synced: false, rejected: ""
+  }
+  writeJson(CHECKS_KEY, [rec].concat(readChecks()).slice(0, KEEP_CHECKS))
+  checkDraft = null; saveDraft()
+  $("odometer").value = ""
+  setStatus(el, "")
+  renderVehicle(); renderVehicleBanner()
+  window.scrollTo(0, 0)
+  if(rec.outcome === "Unfit") speakFare("Critical defect recorded. Do not carry passengers.")
+  pushChecks()
+})
+
+function renderCheckHistory(){
+  const list = readChecks().slice(0, 10)
+  $("checkHistory").innerHTML = list.length ? list.map(c=>
+    "<div class='chkHist'>"+esc(c.date)+" · <strong>"+esc(c.outcome)+"</strong>"+(c.vehicle ? " · "+esc(c.vehicle) : "")+" "+
+    (c.rejected ? "<span class='badge bad'>✗ refused: "+esc(c.rejected)+"</span>"
+      : c.synced ? "<span class='badge ok'>✓ on the office record</span>" : "<span class='badge wait'>● waiting to send</span>")+
+    "</div>").join("") : "<div class='empty'>No checks yet.</div>"
+}
+
+/* Same rules as the trip queue: walked one at a time, marked only once the
+   office has it, a refusal kept with its reason rather than retried for ever. */
+let checksInFlight = false, checksRetry = null
+async function pushChecks(){
+  if(checksInFlight || !validatedDriverId || !sessionToken) return
+  const waiting = readChecks().filter(c=>!c.synced && !c.rejected && (!c.driverId || c.driverId === validatedDriverId))
+  if(!waiting.length) return
+  checksInFlight = true
+  clearTimeout(checksRetry); checksRetry = null
+  let failed = false
+  try{
+    for(const c of waiting){
+      let json
+      try{
+        json = await postToBackend({type:"vehicleCheck", check:{
+          checkId:c.checkId, date:c.date, vehicle:c.vehicle, odometer:c.odometer, outcome:c.outcome,
+          defects:c.defects, advisories:c.advisories, renewals:c.renewals }})
+      }catch(err){ failed = true; setStatus($("checkSync"), "⚠ " + ((err && err.friendly) || "Could not reach the office") + " The check will send on its own.", "warn2"); break }
+      const all = readChecks()
+      const mine = all.filter(x=>x.checkId === c.checkId)[0]
+      if(!mine) continue
+      if(json && json.status === "ok") mine.synced = true
+      else if(json && json.code === "invalid") mine.rejected = json.message || "refused"
+      else { failed = true; setStatus($("checkSync"), "⚠ " + String((json && json.message) || "The office did not take the check").replace(/\.?$/, ".") + " Trying again shortly.", "warn2"); writeJson(CHECKS_KEY, all); break }
+      writeJson(CHECKS_KEY, all)
+    }
+    if(!failed) setStatus($("checkSync"), "✓ Checks are on the office record.", "ok")
+  } finally {
+    checksInFlight = false
+    if(currentPage === "vehicle") renderCheckHistory()
+  }
+  if(failed) checksRetry = setTimeout(pushChecks, 60000)
+}
+
+/* ---- renewal dates ---- */
+
+function renderRenewals(){
+  const dates = readRenewals()
+  const fields = $("renewFields")
+  if(!fields.childElementCount){
+    fields.innerHTML = TaxiVehicle.DOCUMENTS.map(d=>
+      "<div class='renewRow'><label for='rn-"+d.id+"'>"+esc(d.name)+"</label>"+
+      "<input type='date' id='rn-"+d.id+"' data-doc='"+d.id+"'></div>").join("")
+  }
+  TaxiVehicle.DOCUMENTS.forEach(d=>{ const i = $("rn-"+d.id); if(i && document.activeElement !== i) i.value = dates[d.id] || "" })
+  const warn = TaxiVehicle.renewalWarnings(dates)
+  $("renewWarn").innerHTML = warn.map(r=>{
+    const cls = (r.level === "expired" || r.level === "today") ? "bad" : (r.level === "soon" || r.level === "due") ? "warn" : ""
+    return "<div class='vbLine "+cls+"'>"+esc(r.text)+"</div>"
+  }).join("")
+}
+$("renewFields").addEventListener("change", e=>{
+  const id = e.target.dataset && e.target.dataset.doc
+  if(!id) return
+  const dates = readRenewals()
+  if(e.target.value && TaxiVehicle.parseIsoDate(e.target.value)) dates[id] = e.target.value
+  else delete dates[id]
+  writeJson(RENEW_KEY, dates)
+  renderRenewals(); renderVehicleBanner()
+})
+
+/* A reminder a parked driver sees without opening anything: the day ticks
+   over while the app sits on the dash. */
+setInterval(()=>{ if(currentPage === "home") renderVehicleBanner() }, 15 * 60000)
+
 /* ---------- Wiring ---------- */
 
 driverInput.addEventListener("input", onIdInput)
@@ -2577,6 +3097,9 @@ verifyBtn.addEventListener("click", validateId)
 clearDestBtn.addEventListener("click", clearDestination)
 $("shareBtn").addEventListener("click", shareCurrentReceipt)
 $("copyBtn").addEventListener("click", copyCurrentReceipt)
+$("pdfReceiptBtn").addEventListener("click", saveReceiptPdf)
+$("stmtBtn").addEventListener("click", saveStatementPdf)
+$("stmtPeriod").addEventListener("change", renderStatementPreview)
 $("exportBtn").addEventListener("click", exportTrips)
 $("healthBtn").addEventListener("click", healthCheck)
 $("signinInstallBtn").addEventListener("click", ()=>navigate("install"))
@@ -2649,6 +3172,7 @@ if(wasRunning && validatedDriverId){
 }
 
 update(); renderHistory(); updateDashboard(); renderTariffTable(); renderStorage(); renderStuck()
+renderVehicleBanner()
 scheduleSync()   /* anything left queued from a previous shift goes out on its own */
 
 /* Offline first load. Without this, Leaflet is fetched from the network on every
