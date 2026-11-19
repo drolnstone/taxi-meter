@@ -226,7 +226,10 @@ details.more summary:focus-visible{outline:3px solid var(--focusRing);outline-of
   margin-left:auto;margin-right:auto}
 
 /* ---------- Theme picker ---------- */
-#themePicker{display:flex;gap:8px}
+#themePicker,#vehiclePicker{display:flex;gap:8px}
+#vehiclePicker button{flex:1;margin-top:0;padding:12px 6px;font-size:15px;
+  background:var(--field);color:var(--ink);border:1px solid var(--line)}
+#vehiclePicker button[aria-pressed="true"]{background:var(--blueDeep);color:#fff;border-color:var(--blueDeep)}
 #themePicker button{flex:1;margin-top:0;padding:12px 6px;font-size:15px;
   background:var(--field);color:var(--ink);border:1px solid var(--line)}
 #themePicker button[aria-pressed="true"]{background:var(--blueDeep);color:#fff;border-color:var(--blueDeep)}
@@ -295,6 +298,7 @@ details.more summary:focus-visible{outline:3px solid var(--focusRing);outline-of
 .renewNote{font-size:13px;color:var(--dim);line-height:1.5;margin:10px 0 0}
 .chkHist{font-size:14px;color:var(--ink2);padding:8px 0;border-bottom:1px solid var(--line)}
 .chkHist:last-child{border-bottom:none}
+.chkHist .chkPdf{margin:4px 0 0;padding:6px 0;font-size:14px}
 #appVersions{font-size:13px;color:var(--dim);text-align:center;margin:8px 0 0}
 
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}
@@ -340,6 +344,13 @@ details.more summary:focus-visible{outline:3px solid var(--focusRing);outline-of
   <h1 id="h-home" tabindex="-1">Set up the job</h1>
 
   <div id="vehicleBanner" aria-live="polite"></div>
+
+  <div class="card">
+    <label class="fieldLabel" for="tripReg">Vehicle registration</label>
+    <input id="tripReg" type="text" placeholder="e.g. AB12 CDE" maxlength="12"
+           autocapitalize="characters" autocorrect="off" spellcheck="false" autocomplete="off">
+    <div id="tripRegStatus" class="statusLine" role="status" aria-live="polite"></div>
+  </div>
 
   <div class="card" id="destCard">
     <h3>Quote a job</h3>
@@ -535,14 +546,14 @@ details.more summary:focus-visible{outline:3px solid var(--focusRing);outline-of
     <h3>Renewal dates</h3>
     <div id="renewWarn"></div>
     <div id="renewFields"></div>
-    <p class="renewNote">Kept on this phone. You are reminded 60, 30 and 7 days before each date, and asked before
+    <p class="renewNote">Your checks and dates are kept on this phone only and are not sent to anyone. You are reminded 60, 30 and 7 days before each date, and asked before
       a trip if your plate, badge, insurance or MOT has run out.</p>
   </div>
 
   <div class="card">
     <h3>Recent checks</h3>
     <div id="checkHistory"></div>
-    <div id="checkSync" class="statusLine" role="status" aria-live="polite" aria-atomic="true"></div>
+    <div id="checkPdfStatus" class="statusLine" role="status" aria-live="polite" aria-atomic="true"></div>
   </div>
 </section>
 
@@ -587,6 +598,15 @@ details.more summary:focus-visible{outline:3px solid var(--focusRing);outline-of
       <button type="button" data-theme-choice="dark"  aria-pressed="false">Dark</button>
     </div>
     <p id="themeNote"></p>
+  </div>
+
+  <div class="card">
+    <h3>Vehicle check and reminders</h3>
+    <div id="vehiclePicker" role="group" aria-label="Vehicle check and reminders">
+      <button type="button" data-vehicle-choice="on"  aria-pressed="true">On</button>
+      <button type="button" data-vehicle-choice="off" aria-pressed="false">Off</button>
+    </div>
+    <p id="vehicleNote" class="renewNote"></p>
   </div>
 
   <div class="card">
@@ -641,7 +661,7 @@ details.more summary:focus-visible{outline:3px solid var(--focusRing);outline-of
 
 /* Printed on Settings with the sheet's own version (the minibus app's
    "versions on the foot"). Bump with CACHE_VERSION in sw.js. */
-const APP_VERSION = "1.8.0"
+const APP_VERSION = "1.10.0"
 
 const SYNC_URL = "https://script.google.com/macros/s/AKfycbwfVdwML13iR7X_RQDB9ntchayc-byxHEWjp__Xcxiy9w0LmaepWt5VwAaYNd4BAppx/exec"
 
@@ -1040,6 +1060,7 @@ function resolveRoute(want){
   if(!validatedDriverId) return "signin"
   if(want === "summary") return summaryContext ? "summary" : "home"
   if(want === "signin" || want === "trip") return "home"
+  if(want === "vehicle" && !vehicleOn()) return "settings"
   return PAGES.indexOf(want) >= 0 ? want : "home"
 }
 
@@ -1146,7 +1167,7 @@ tabBar.addEventListener("click", e=>{
 
 /* The fixed dock and the software keyboard fight over the same space, which
    pushes the last address suggestions off screen. */
-for(const el of [driverInput, destInput, pickupInput, agreedInput]){
+for(const el of [driverInput, destInput, pickupInput, agreedInput, $("tripReg")]){
   el.addEventListener("focus", ()=>{ bottomDock.style.display = "none"; syncDockPadding() })
   el.addEventListener("blur",  ()=>{ setTimeout(()=>{ if(currentPage) renderPage(currentPage) }, 120) })
 }
@@ -2232,8 +2253,11 @@ async function startTrip(){
     navigate("signin"); driverInput.focus(); return
   }
 
-  const confirmed = await preflightVehicle()
-  if(confirmed === null) return
+  if(!readVehicleReg()){
+    await tell("Vehicle registration needed", "Enter the registration of the vehicle you are driving. It goes on every trip sent to the office.")
+    navigate("home"); $("tripReg").focus(); return
+  }
+  if(!(await preflightVehicle())) return
 
   actionBtn.disabled=true; actionBtn.textContent="Checking…"
   try{
@@ -2251,8 +2275,7 @@ async function startTrip(){
     return
   }
 
-  notifyOwner(validatedDriverId,validatedDriverName,"Started Trip"+(destination?" to "+destination.label:"")+
-    (confirmed.length ? " (driver confirmed: "+confirmed.join(", ")+")" : ""))
+  notifyOwner(validatedDriverId,validatedDriverName,"Started Trip"+(destination?" to "+destination.label:""))
   running=true; startCoord=null; endCoord=null
   distance=0; elapsed=0; route=[]; if(mapOk) polyline.setLatLngs([])
   chargeableDistance=0; waitingSeconds=0; incrementsCharged=0
@@ -2315,7 +2338,8 @@ function resetTrip(){
 function receiptText(t){
   let r = "Taxi Receipt\n\nDriver: "+(t.driverName||"")+"\nID: "+(t.driverId||"")+
     "\nDistance: "+t.miles+" mi\nTime: "+t.time+
-    "\nTariff: "+(t.tariff||"Day")+" rate"
+    "\nTariff: "+(t.tariff||"Day")+" rate"+
+    (t.vehicleReg ? "\nVehicle: "+t.vehicleReg : "")
   if(t.destination) r += "\nDestination: "+t.destination
   if(t.runningMiles !== undefined && t.runningMiles !== "")
     r += "\nCharged as: "+t.runningMiles+" mi running, "+t.waitingTime+" waiting"
@@ -2442,6 +2466,7 @@ function saveTrip(){
     estimatedMiles: gapDistanceTotal>0?toMiles(gapDistanceTotal):"0.00", gapEvents: gapEventCount,
     runningMiles: toMiles(chargeableDistance), waitingTime: formatTime(waitingSeconds),
     driverId: validatedDriverId, driverName: validatedDriverName,
+    vehicleReg: readVehicleReg(),
     synced: false, rejected: ""
   }
   trips.unshift(rec)
@@ -2486,7 +2511,7 @@ function openPastReceipt(tripId){
 function exportTrips(){
   const trips = readTrips()
   if(!trips.length){ setStatus(syncStatus,"Nothing to export yet."); return }
-  let csv="Driver ID,Driver Name,Date,Time,Duration,Total Charged (£),Metered Fare (£),Agreed Fare (£),Extras (£),Extras Detail,Tariff,Destination,Running Miles,Waiting Time,Quoted Low (£),Quoted High (£),Quoted Miles,Estimated Miles,Gap Events,Start Coords,End Coords,Trip ID\n"
+  let csv="Driver ID,Driver Name,Date,Time,Duration,Total Charged (£),Metered Fare (£),Agreed Fare (£),Extras (£),Extras Detail,Tariff,Destination,Running Miles,Waiting Time,Quoted Low (£),Quoted High (£),Quoted Miles,Estimated Miles,Gap Events,Start Coords,End Coords,Trip ID,Vehicle Reg\n"
   trips.forEach(t=>{
     const s=t.start?t.start.lat+" "+t.start.lng:"N/A", e=t.end?t.end.lat+" "+t.end.lng:"N/A"
     const datePart=String(t.date||"").split(", ")[0]||"", timePart=String(t.date||"").split(", ")[1]||""
@@ -2497,7 +2522,7 @@ function exportTrips(){
             t.meteredFare===undefined?"":t.meteredFare, t.agreedFare||"",
             exTotal?exTotal.toFixed(2):"", exDetail,
             t.tariff||"Day",t.destination,t.runningMiles||"",t.waitingTime||"",
-            t.quotedLow,t.quotedHigh,t.quotedMiles,t.estimatedMiles,t.gapEvents,s,e,t.tripId]
+            t.quotedLow,t.quotedHigh,t.quotedMiles,t.estimatedMiles,t.gapEvents,s,e,t.tripId,t.vehicleReg||""]
            .map(csvSafe).join(",")+"\n"
   })
   /* Excel assumes the system codepage without a BOM, which turns every £ into Â£. */
@@ -2555,7 +2580,6 @@ function cancelSync(){ clearTimeout(syncTimer); syncTimer = null }
 async function pushQueue(){
   if(syncInFlight) return
   if(!validatedDriverId) return          /* nothing to authenticate the upload with */
-  pushChecks()
   let trips = readTrips()
   const unsynced = trips.filter(t => !t.synced && !t.rejected)
   if(!unsynced.length){
@@ -2788,9 +2812,13 @@ async function saveStatementPdf(){
 
 /* ---------- Daily vehicle check and renewal dates ----------
    Ported from the minibus driver app's walkaround (Fine / Advisory / Defect on
-   every item, critical items, the check made on the phone with its own ID so a
-   retry is filed once) and its 60/30/7/0 day renewal warnings. The checklist
-   and the rules are in vehicle.js. */
+   every item, critical items) and its 60/30/7/0 day renewal warnings. The
+   checklist and the rules are in vehicle.js.
+
+   PRIVATE TO THE DRIVER. The vehicle is the driver's own; the meter's owner
+   takes a commission on fares and has no part in inspecting vehicles. So
+   checks, defects, renewal dates and the start-trip prompts stay on this
+   phone and are never sent to the sheet. tests/run-tests.mjs holds this. */
 
 const CHECKS_KEY = "vehicleChecks", DRAFT_KEY = "checkDraft", RENEW_KEY = "renewals"
 const KEEP_CHECKS = 60
@@ -2805,6 +2833,25 @@ function writeJson(key, v){
 function readChecks(){ const v = readJson(CHECKS_KEY, []); return Array.isArray(v) ? v : [] }
 function readRenewals(){ const v = readJson(RENEW_KEY, {}); return v && typeof v === "object" ? v : {} }
 function readVehicleReg(){ try{ return localStorage.vehicleReg || "" }catch(e){ return "" } }
+
+/* The reg goes on every trip sent to the sheet, so it lives outside the
+   optional vehicle check. Same tidy-up as the sheet's normaliseReg_. */
+function normaliseReg(v){
+  const s = String(v||"").toUpperCase().replace(/[^A-Z0-9 ]/g,"").replace(/\s+/g," ").trim()
+  const m = /^([A-Z]{2}\d{2}) ?([A-Z]{3})$/.exec(s)
+  return m ? m[1]+" "+m[2] : s.slice(0,12)
+}
+function saveVehicleReg(v){
+  const reg = normaliseReg(v)
+  try{ localStorage.vehicleReg = reg }catch(e){}
+  if($("tripReg").value !== reg) $("tripReg").value = reg
+  if(document.activeElement !== $("vehicleReg")) $("vehicleReg").value = reg
+  return reg
+}
+$("tripReg").addEventListener("change", e=>{
+  const reg = saveVehicleReg(e.target.value)
+  setStatus($("tripRegStatus"), reg ? "✓ Trips will be recorded against " + reg + "." : "", reg ? "ok" : "")
+})
 
 /* Today's latest check by whoever is signed in, or null. */
 function todaysCheck(){
@@ -2825,6 +2872,7 @@ function outcomeClass(o){
 function renderVehicleBanner(){
   const host = $("vehicleBanner")
   if(!host) return
+  if(!vehicleOn()){ host.innerHTML = ""; return }
   let html = ""
   TaxiVehicle.renewalWarnings(readRenewals()).forEach(r=>{
     const cls = (r.level === "expired" || r.level === "today") ? "bad"
@@ -2846,26 +2894,25 @@ $("vehicleBanner").addEventListener("click", e=>{
   if(b) navigate(b.dataset.go)
 })
 
-/* Asked before a trip starts. Returns the list of things the driver chose to
-   go ahead despite (for the office log), or null to stop. */
+/* Asked before a trip starts: true to go ahead. A reminder for the driver
+   and nothing more. The vehicle is the driver's own, so what they decide is
+   not sent anywhere. */
 async function preflightVehicle(){
-  const went = []
+  if(!vehicleOn()) return true
   const expired = TaxiVehicle.blockingRenewals(readRenewals())
   if(expired.length){
     const ok = await ask("Your " + expired.map(r=>r.name.toLowerCase()).join(" and ") + (expired.length>1?" have":" has") + " run out",
       expired.map(r=>r.text).join("\n") +
-      "\n\nIf you have renewed, put the new date on the Vehicle tab. Going ahead is your decision and goes on the office log.",
+      "\n\nIf you have renewed, put the new date on the Vehicle tab.",
       "Start the trip anyway", "stop")
-    if(!ok) return null
-    went.push("expired " + expired.map(r=>r.name).join(", "))
+    if(!ok) return false
   }
   const c = todaysCheck()
   if(c && c.outcome === "Unfit"){
     const ok = await ask("Today's check found a critical defect",
-      c.defects + "\n\nDo not carry passengers until it is fixed. If it has been fixed, do the check again on the Vehicle tab.",
+      c.defects + "\n\nIf it has been fixed, do the check again on the Vehicle tab.",
       "Start the trip anyway", "stop")
-    if(!ok) return null
-    went.push("critical defect from today's check")
+    if(!ok) return false
   } else if(!c){
     /* Once a day, not before every job. */
     const today = new Date().toDateString()
@@ -2874,13 +2921,12 @@ async function preflightVehicle(){
     if(asked !== today){
       try{ localStorage.noCheckAsked = today }catch(e){}
       const ok = await ask("No vehicle check yet today",
-        "It takes about two minutes and goes on the office record. Press Cancel to do it now.",
+        "It takes about two minutes. Press Cancel to do it now.",
         "Start without a check", "reset")
-      if(!ok){ navigate("vehicle"); return null }
-      went.push("no vehicle check today")
+      if(!ok){ navigate("vehicle"); return false }
     }
   }
-  return went
+  return true
 }
 
 /* ---- the check itself ---- */
@@ -2897,10 +2943,11 @@ function renderVehicle(){
       "<div class='row sm'><span>Checked</span><span>"+esc(c.date)+"</span></div>"+
       (c.vehicle ? "<div class='row sm'><span>Vehicle</span><span>"+esc(c.vehicle)+"</span></div>" : "")+
       (c.defects ? "<div class='warn bad'>Defects: "+esc(c.defects)+"</div>" : "")+
-      (c.advisories ? "<div class='warn'>Advisories: "+esc(c.advisories)+"</div>" : "")
+      (c.advisories ? "<div class='warn'>Advisories: "+esc(c.advisories)+"</div>" : "")+
+      "<button type='button' class='ghost' data-check-pdf='"+esc(c.checkId)+"'>Save as PDF</button>"
     $("checkStartBtn").textContent = "Check again"
   } else {
-    today.innerHTML = "<p class='chkLede'>Walk round the vehicle before your first job. Every item is Fine, Advisory "+
+    today.innerHTML = "<p class='chkLede'>For you only: saved on this phone, not sent anywhere. Walk round the vehicle before your first job. Every item is Fine, Advisory "+
       "(worth watching, still safe) or Defect. A defect on a critical item means no passengers until it is fixed.</p>"
     $("checkStartBtn").textContent = "Start today's check"
   }
@@ -2993,9 +3040,8 @@ $("checkSendBtn").addEventListener("click", async ()=>{
       : "Say what is wrong for each defect.", "bad")
     return
   }
-  const reg = $("vehicleReg").value.trim().toUpperCase()
+  const reg = $("vehicleReg").value.trim() ? saveVehicleReg($("vehicleReg").value) : ""
   const odo = $("odometer").value.trim()
-  try{ localStorage.vehicleReg = reg }catch(e){}
   const rec = {
     checkId: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : "c-"+Date.now()+"-"+Math.random().toString(16).slice(2),
     date: localTimestamp(), vehicle: reg, odometer: odo,
@@ -3003,7 +3049,8 @@ $("checkSendBtn").addEventListener("click", async ()=>{
     defects: TaxiVehicle.describeFindings(o.defects),
     advisories: TaxiVehicle.describeFindings(o.advisories),
     renewals: TaxiVehicle.renewalSummary(readRenewals()),
-    driverId: validatedDriverId, synced: false, rejected: ""
+    items: JSON.parse(JSON.stringify(checkDraft.results)),
+    driverId: validatedDriverId
   }
   writeJson(CHECKS_KEY, [rec].concat(readChecks()).slice(0, KEEP_CHECKS))
   checkDraft = null; saveDraft()
@@ -3011,52 +3058,57 @@ $("checkSendBtn").addEventListener("click", async ()=>{
   setStatus(el, "")
   renderVehicle(); renderVehicleBanner()
   window.scrollTo(0, 0)
-  if(rec.outcome === "Unfit") speakFare("Critical defect recorded. Do not carry passengers.")
-  pushChecks()
+  if(rec.outcome === "Unfit") speakFare("Critical defect recorded.")
 })
 
 function renderCheckHistory(){
   const list = readChecks().slice(0, 10)
   $("checkHistory").innerHTML = list.length ? list.map(c=>
-    "<div class='chkHist'>"+esc(c.date)+" · <strong>"+esc(c.outcome)+"</strong>"+(c.vehicle ? " · "+esc(c.vehicle) : "")+" "+
-    (c.rejected ? "<span class='badge bad'>✗ refused: "+esc(c.rejected)+"</span>"
-      : c.synced ? "<span class='badge ok'>✓ on the office record</span>" : "<span class='badge wait'>● waiting to send</span>")+
+    "<div class='chkHist'>"+esc(c.date)+" · <strong>"+esc(c.outcome)+"</strong>"+(c.vehicle ? " · "+esc(c.vehicle) : "")+
+    (c.defects ? "<br>Defects: "+esc(c.defects) : "")+(c.advisories ? "<br>Advisories: "+esc(c.advisories) : "")+
+    "<button type='button' class='linkBtn chkPdf' data-check-pdf='"+esc(c.checkId)+"'>Save as PDF</button>"+
     "</div>").join("") : "<div class='empty'>No checks yet.</div>"
 }
 
-/* Same rules as the trip queue: walked one at a time, marked only once the
-   office has it, a refusal kept with its reason rather than retried for ever. */
-let checksInFlight = false, checksRetry = null
-async function pushChecks(){
-  if(checksInFlight || !validatedDriverId || !sessionToken) return
-  const waiting = readChecks().filter(c=>!c.synced && !c.rejected && (!c.driverId || c.driverId === validatedDriverId))
-  if(!waiting.length) return
-  checksInFlight = true
-  clearTimeout(checksRetry); checksRetry = null
-  let failed = false
+/* The driver's own copy, to keep or print. Made on the phone, sent nowhere. */
+async function saveCheckPdf(id){
+  const c = readChecks().filter(x=>x.checkId === id)[0]
+  if(!c) return
+  const el = $("checkPdfStatus")
+  setStatus(el, "Making the PDF…")
   try{
-    for(const c of waiting){
-      let json
-      try{
-        json = await postToBackend({type:"vehicleCheck", check:{
-          checkId:c.checkId, date:c.date, vehicle:c.vehicle, odometer:c.odometer, outcome:c.outcome,
-          defects:c.defects, advisories:c.advisories, renewals:c.renewals }})
-      }catch(err){ failed = true; setStatus($("checkSync"), "⚠ " + ((err && err.friendly) || "Could not reach the office") + " The check will send on its own.", "warn2"); break }
-      const all = readChecks()
-      const mine = all.filter(x=>x.checkId === c.checkId)[0]
-      if(!mine) continue
-      if(json && json.status === "ok") mine.synced = true
-      else if(json && json.code === "invalid") mine.rejected = json.message || "refused"
-      else { failed = true; setStatus($("checkSync"), "⚠ " + String((json && json.message) || "The office did not take the check").replace(/\.?$/, ".") + " Trying again shortly.", "warn2"); writeJson(CHECKS_KEY, all); break }
-      writeJson(CHECKS_KEY, all)
-    }
-    if(!failed) setStatus($("checkSync"), "✓ Checks are on the office record.", "ok")
-  } finally {
-    checksInFlight = false
-    if(currentPage === "vehicle") renderCheckHistory()
+    await loadPdfLib()
+    const doc = TaxiPdf.checkPdf(c, TaxiVehicle.CHECK_SECTIONS, TaxiVehicle.renewalStatus(readRenewals()), pdfOptions())
+    await deliverPdf(doc, TaxiPdf.fileName("check", c), el)
+  }catch(err){
+    console.error("[taxi] check pdf:", err)
+    setStatus(el, "⚠ " + (err && err.message || "The PDF could not be made."), "bad")
   }
-  if(failed) checksRetry = setTimeout(pushChecks, 60000)
 }
+$("page-vehicle").addEventListener("click", e=>{
+  const b = e.target.closest("[data-check-pdf]")
+  if(b) saveCheckPdf(b.dataset.checkPdf)
+})
+
+/* ---- on or off, the driver's choice ---- */
+function vehicleOn(){ try{ return localStorage.vehicleFeature !== "off" }catch(e){ return true } }
+function applyVehicleChoice(){
+  const on = vehicleOn()
+  const tab = tabBar.querySelector("[data-route=vehicle]")
+  show(tab, on)
+  for(const b of $("vehiclePicker").querySelectorAll("button"))
+    b.setAttribute("aria-pressed", String((b.dataset.vehicleChoice === "on") === on))
+  $("vehicleNote").textContent = on
+    ? "A daily check and renewal reminders, kept on this phone only. Turn off if you do not want them."
+    : "Off. No Vehicle tab, no reminders and no questions before a trip. Your saved checks and dates are kept."
+  renderVehicleBanner()
+}
+$("vehiclePicker").addEventListener("click", e=>{
+  const b = e.target.closest("button[data-vehicle-choice]")
+  if(!b) return
+  try{ localStorage.vehicleFeature = b.dataset.vehicleChoice }catch(err){}
+  applyVehicleChoice()
+})
 
 /* ---- renewal dates ---- */
 
@@ -3172,7 +3224,8 @@ if(wasRunning && validatedDriverId){
 }
 
 update(); renderHistory(); updateDashboard(); renderTariffTable(); renderStorage(); renderStuck()
-renderVehicleBanner()
+applyVehicleChoice()
+$("tripReg").value = readVehicleReg()
 scheduleSync()   /* anything left queued from a previous shift goes out on its own */
 
 /* Offline first load. Without this, Leaflet is fetched from the network on every

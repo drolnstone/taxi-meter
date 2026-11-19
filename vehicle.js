@@ -6,7 +6,8 @@
     and insurance rules). Rewritten for a hackney carriage: one vehicle, one
     driver, no coordinator, so nothing here stops the meter outright. A
     critical defect or an expired document asks the driver before a trip
-    starts, and the answer goes on the office log.
+    starts. The vehicle is the driver's own: all of this stays on their phone
+    and is never sent to the sheet.
 
     Pure functions only. index.html draws the screens; tests/run-tests.mjs
     loads this file in Node.  */

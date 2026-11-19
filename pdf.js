@@ -11,6 +11,7 @@
     Exposes window.TaxiPdf:
       receiptPdf(trip, opt)        one trip, A5 portrait
       statementPdf(stmt, opt)      earnings for a period, A4 portrait
+      checkPdf(check, sections, renewals, opt)   one vehicle check, A4
       periodRange(kind, today)     this-week / last-week / this-month /
                                    last-month / tax-year
       buildStatement(trips, range, parseDate)
@@ -218,7 +219,7 @@
     ];
     if (t.pickupLabel) trip.push(["From", t.pickupLabel]);
     if (t.destination) trip.push(["To", t.destination]);
-    if (opt.vehicle) trip.push(["Vehicle", opt.vehicle]);
+    if (t.vehicleReg || opt.vehicle) trip.push(["Vehicle", t.vehicleReg || opt.vehicle]);
     f.pairs("Journey", trip);
 
     var fare = [["Metered fare", money(t.meteredFare)]];
@@ -335,7 +336,46 @@
     return f.finish("Earnings statement - " + s.range.label + ": " + s.range.text);
   }
 
+  /* ---- One vehicle check, for the driver's own records ----
+     c: the saved check. sections: TaxiVehicle.CHECK_SECTIONS. renewals: the
+     output of TaxiVehicle.renewalStatus, or nothing. */
+  var MARK_WORD = { fine: "Fine", advisory: "Advisory", defect: "Defect" };
+
+  function checkPdf(c, sections, renewals, opt) {
+    opt = opt || {};
+    var f = frame("a4", "Vehicle check", "The driver's own daily check, saved on their phone.", c.date || "", opt);
+    var head = [
+      ["Driver", (opt.driver || "") + (opt.driverId ? " (" + opt.driverId + ")" : "")],
+      ["Vehicle", c.vehicle || ""],
+      ["Odometer", c.odometer ? Number(c.odometer).toLocaleString("en-GB") + " miles" : ""],
+      ["Outcome", c.outcome || ""]
+    ];
+    f.pairs("Summary", head.filter(function (r) { return r[1]; }));
+    var found = [];
+    if (c.defects) found.push(["Defects", c.defects]);
+    if (c.advisories) found.push(["Advisories", c.advisories]);
+    if (found.length) f.table({ head: "Findings", cols: ["", ""], rows: found, right: [false, false] });
+    var items = c.items || null;
+    (sections || []).forEach(function (sec) {
+      f.table({ head: sec.title, cols: ["Item", "Result", "Note"], right: [false, false, false],
+        rows: sec.items.map(function (it) {
+          var r = items && items[it.id] || {};
+          return [it.name + (it.crit ? " (critical)" : ""), MARK_WORD[r.mark] || (items ? "Not marked" : "-"), r.note || ""];
+        }) });
+    });
+    if (renewals && renewals.length) {
+      f.table({ head: "Renewal dates", cols: ["Document", "Date", ""], right: [false, false, false],
+        rows: renewals.map(function (r) { return [r.name, r.date, r.days < 0 ? "Expired" : r.days + " days"]; }) });
+    }
+    if (!items) f.note("This check was saved before item-by-item results were kept, so only its findings are shown.");
+    return f.finish("Vehicle check - " + (c.vehicle ? c.vehicle + " - " : "") + (c.date || ""));
+  }
+
   function fileName(kind, a) {
+    if (kind === "check") {
+      var cd = String(a && a.date || "").split(", ")[0].split("/").reverse().join("-");
+      return "Vehicle check " + (cd || "") + (a && a.vehicle ? " " + String(a.vehicle).replace(/[^\w -]/g, "") : "") + ".pdf";
+    }
     if (kind === "receipt") {
       var d = String(a && a.date || "").split(", ")[0].split("/").reverse().join("-");
       return "Taxi receipt " + (d || "trip") + ".pdf";
@@ -343,6 +383,6 @@
     return "Earnings statement " + isoDate(a.from) + " to " + isoDate(addDays(a.to, -1)) + ".pdf";
   }
 
-  root.TaxiPdf = { receiptPdf: receiptPdf, statementPdf: statementPdf, periodRange: periodRange,
+  root.TaxiPdf = { receiptPdf: receiptPdf, statementPdf: statementPdf, checkPdf: checkPdf, periodRange: periodRange,
                    buildStatement: buildStatement, fileName: fileName, clean: clean };
 })(typeof window !== "undefined" ? window : globalThis);

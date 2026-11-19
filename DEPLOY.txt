@@ -1,38 +1,53 @@
 TAXI METER: DEPLOY NOTE
 
-YOU ARE ON:   app (no number shown) · sheet (no number shown) · sw cache taxi-meter-v7
-GOING TO:     app 1.8.0 · sheet 1.1.0 · sw cache taxi-meter-v8
+YOU ARE ON:   none of PR #1 or #2 deployed yet (Apps Script untouched)
+GOING TO:     app 1.10.0 · sheet 1.2.0 · sw cache taxi-meter-v9
 
-WHAT CHANGED (features taken from the minibus and ushers apps)
-- Vehicle tab: a daily vehicle check (Fine / Advisory / Defect on 28 items,
-  critical items marked) that goes to a new "Vehicle Checks" tab on the sheet.
-- Renewal dates for plate, badge, insurance, MOT, DVLA licence and meter test,
-  with reminders on the meter screen 60, 30 and 7 days out.
-- Before a trip: asked if plate, badge, insurance or MOT has run out, or if
-  today's check found a critical defect. Going ahead is noted on the Log tab.
-  Asked once a day if no check has been done.
-- Save a receipt as a PDF (Trip complete screen, and any past trip).
-- Earnings statement PDF for this week, last week, this month, last month or
-  the tax year to date (Earnings tab).
-- Settings shows "App 1.8.0 · Sheet 1.1.0".
-- tests/run-tests.mjs and a Tests workflow on GitHub.
+WHAT CHANGED SINCE YOUR LIVE VERSION
+- Vehicle tab (the driver's own, on their phone only): a daily vehicle check
+  (Fine / Advisory / Defect on 28 items) and renewal dates for plate, badge,
+  insurance, MOT, DVLA licence and meter test, with reminders 60, 30 and 7 days
+  out and a question before a trip if one has run out. Nothing about the
+  vehicle is sent to the sheet or the Log tab.
+- Each check can be saved or printed as a PDF ("Save as PDF").
+- Settings → Vehicle check and reminders: On / Off, the driver's choice.
+- Receipts can be saved as a PDF; Earnings has an earnings statement PDF for
+  this/last week, this/last month or the tax year to date.
+- Settings shows "App 1.10.0 · Sheet 1.2.0" after Test connection.
+- Vehicle registration on every trip. The driver enters it once on the Meter
+  tab (it is remembered), and Start trip asks for it if it is blank. It goes to
+  a new "Vehicle Reg" column at the end of Trips (added by the first sync, nothing to
+  do by hand), and onto the receipt, the PDFs and the CSV.
+- Sheet columns are found by their heading, never by position (the minibus
+  sheet's rule). Trips, Drivers, Log and the Summary formulas all follow the
+  headings, so columns can be moved, inserted or added. Only renaming a
+  heading matters. "Fix headers" is now "Add missing headers": it adds a
+  missing heading at the end and never relabels or moves one.
+- Sheet protection, ported from the minibus sheet: Trips, Log and Summary are
+  locked warning-only (an edit asks you to confirm first), the Drivers heading
+  row is locked, and it relocks itself every night at about 3am. Menu:
+  Taxi Meter → Protect the sheet / Unprotect the sheet. The security check
+  names any tab left unprotected.
 
 DEPLOY
 1. Paste Code.gs into the Apps Script editor, save, then
    Deploy → Manage deployments → edit → New version.
-2. Publish index.html, sw.js, vehicle.js, pdf.js and the vendor/ folder to the
-   same place as before (all in the same folder, vendor/ beside index.html).
-3. Reload the spreadsheet. Nothing to migrate: the "Vehicle Checks" tab is
-   made by the first check sent.
+2. In the editor, run lockSheet once and accept the prompts. It asks for one
+   new permission (to set the nightly relock timer).
+3. Reload the spreadsheet, then Taxi Meter → Build or rebuild Summary tab, so
+   its formulas are made from the headings.
+4. Publish index.html, sw.js, vehicle.js, pdf.js and the vendor/ folder to the
+   same folder as before.
 
 CHECKS AFTERWARDS
-A. Open the deployment URL in a browser: it shows "version": "1.1.0".
-B. On a phone: Settings → Test connection. The line under it reads
-   App 1.8.0 · Sheet 1.1.0.
-C. Vehicle tab → Start today's check → Mark the rest Fine → Send.
-   "Recent checks" shows "on the office record", and the sheet has a row on
-   "Vehicle Checks".
-D. Put yesterday's date as Insurance. Meter tab shows it in red, and Start trip
-   asks before starting. Cancel, then clear the date.
-E. Finish a short trip, press Save as PDF. Earnings → Make a PDF statement.
-F. Spreadsheet: Taxi Meter → Show vehicle checks with defects.
+0. Taxi Meter → Check security setup: no "UNPROTECTED" line.
+   Taxi Meter → Check headers: every tab "all headings present".
+A. Open the deployment URL in a browser: it shows "version": "1.2.0".
+B. Phone: Settings → Test connection reads App 1.10.0 · Sheet 1.2.0.
+C. Vehicle tab → Start today's check → Mark the rest Fine → Send → Save as PDF.
+   Nothing new appears on the sheet.
+D. Settings → Vehicle check and reminders → Off: the Vehicle tab goes, and
+   Start trip asks nothing. Turn it back On.
+E. Meter tab: enter the reg, finish a short trip. The receipt shows
+   "Vehicle: AB12 CDE" and the Trips row has it under "Vehicle Reg".
+F. Summary → Save as PDF. Earnings → Make a PDF statement.

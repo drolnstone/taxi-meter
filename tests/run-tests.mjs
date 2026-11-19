@@ -120,52 +120,103 @@ t("statement PDF splits a long period across pages", () => {
   ok(doc.getNumberOfPages() >= 3, "pages " + doc.getNumberOfPages());
   ok(doc.output().includes("Page 1 of " + doc.getNumberOfPages()));
 });
+t("vehicle check PDF lists every item with its result", () => {
+  const items = Object.fromEntries(V.ALL_ITEMS.map(i => [i.id, { mark: "fine", note: "" }]));
+  items.brakes = { mark: "defect", note: "Pedal sinks" };
+  const c = { checkId: "c1", date: "19/11/2026, 07:55:10", vehicle: "AB12 CDE", odometer: "84210", outcome: "Unfit", defects: "Brakes (critical): Pedal sinks", items };
+  const doc = P.checkPdf(c, V.CHECK_SECTIONS, V.renewalStatus({ insurance: "2027-01-01" }, day(2026, 11, 19)), { driver: "Ann", compress: false });
+  const out = doc.output();
+  ok(out.includes("Pedal sinks") && out.includes("Wheel nuts") && out.includes("01/01/2027"), "content missing");
+  eq(P.fileName("check", c), "Vehicle check 2026-11-19 AB12 CDE.pdf");
+  ok(P.checkPdf({ date: "x", outcome: "Fit" }, V.CHECK_SECTIONS, [], {}).output().length > 1000, "old check without items");
+});
 t("file names", () => {
   eq(P.fileName("receipt", trips[0]), "Taxi receipt 2026-11-19.pdf");
   eq(P.fileName("statement", P.periodRange("last-month", day(2026, 11, 20))), "Earnings statement 2026-10-01 to 2026-10-31.pdf");
 });
 
-/* ---------- Code.gs: the vehicle check ---------- */
+/* ---------- Code.gs ---------- */
 function loadGas(sheets) {
   const { g, book } = makeGas(sheets, { APP_SECRET: "test-secret" });
   vm.createContext(g); vm.runInContext(read("Code.gs"), g);
   return { g, book };
 }
+const g0 = () => loadGas({}).g;
 const drivers = () => new FakeSheet("Drivers", [["Driver ID", "Name", "Active (TRUE/FALSE)"], ["TX-AAAAA", "Ann Driver", true], ["TX-BBBBB", "Off Driver", false]]);
 const post = (g, body) => JSON.parse(g.doPost({ postData: { contents: JSON.stringify(body) } }).text);
-const goodCheck = { checkId: "c-1", date: "19/11/2026, 07:55:10", vehicle: "AB12 CDE", odometer: "84210", outcome: "Unfit", defects: "Brakes (critical): pedal sinks", advisories: "", renewals: "Insurance 01/01/2027" };
-
-t("a check is filed by header, once", () => {
-  const { g, book } = loadGas({ Drivers: drivers() });
-  const token = g.makeToken_("TX-AAAAA");
-  eq(post(g, { type: "vehicleCheck", token, check: goodCheck }).status, "ok");
-  const r2 = post(g, { type: "vehicleCheck", token, check: goodCheck });
-  eq([r2.status, r2.duplicate], ["ok", true]);
-  const sh = book.sheets["Vehicle Checks"];
-  eq(sh.rows[0], g.CHECK_HEADERS.slice());
-  eq(sh.getLastRow(), 2);
-  const row = Object.fromEntries(sh.rows[0].map((h, i) => [h, sh.rows[1][i]]));
-  eq([row["Driver Name"], row["Outcome"], row["Odometer"], row["Check ID"]], ["Ann Driver", "Unfit", 84210, "c-1"]);
-  ok(row["Check Date"] instanceof Date || Object.prototype.toString.call(row["Check Date"]) === "[object Date]", "date not a Date");
+t("a trip carries its vehicle reg into the new column X, on an older 23-column sheet", () => {
+  const old = ["Sync Timestamp", "Driver ID", "Driver Name", "Trip Date", "Distance (mi)", "Duration", "Fare (£)", "Tariff",
+    "Start Coords", "End Coords", "Trip ID", "Destination", "Quoted Low (£)", "Quoted High (£)", "Quoted Miles",
+    "Estimated Miles", "Gap Events", "Metered Fare (£)", "Extras (£)", "Extras Detail", "Agreed Fare (£)", "Running Miles", "Waiting Time"];
+  const trips = new FakeSheet("Trips", [old]);
+  const { g } = loadGas({ Drivers: drivers(), Trips: trips });
+  const trip = { tripId: "t-1", date: "19/11/2026, 10:00:00", miles: "2.00", time: "00:10:00", fare: 7.4, meteredFare: 7.4,
+                 tariff: "Day", extras: [], vehicleReg: "ab12cde" };
+  const r = post(g, { type: "sync", token: g.makeToken_("TX-AAAAA"), trips: [trip] });
+  eq([r.status, r.inserted], ["ok", 1], JSON.stringify(r));
+  eq(trips.rows[0][23], "Vehicle Reg");
+  eq(trips.rows[1][23], "AB12 CDE");
+  eq(g.normaliseReg_("  y 123  abc "), "Y 123 ABC");
 });
-t("the office's own column order and extra columns are respected", () => {
-  const sh = new FakeSheet("Vehicle Checks", [["Check ID", "Office note", "Outcome"]]);
-  const { g } = loadGas({ Drivers: drivers(), "Vehicle Checks": sh });
-  eq(post(g, { type: "vehicleCheck", token: g.makeToken_("TX-AAAAA"), check: goodCheck }).status, "ok");
-  eq(sh.rows[0].slice(0, 4), ["Check ID", "Office note", "Outcome", "Received"]);
-  eq([sh.rows[1][0], sh.rows[1][1], sh.rows[1][2]], ["c-1", "", "Unfit"]);
+/* A sheet the office has rearranged: every tab's columns shuffled, with
+   columns of their own inserted. Nothing may land in the wrong place. */
+const shuffled = (headers, extra) => { const h = headers.slice().reverse(); h.splice(2, 0, extra); return h; };
+t("columns by heading: rearranged Drivers still signs in", () => {
+  const d = new FakeSheet("Drivers", [["Notes", "Active (TRUE/FALSE)", "Name", "Phone", "Driver ID"], ["", true, "Ann Driver", "0700", "TX-AAAAA"], ["", false, "Off", "", "TX-BBBBB"]]);
+  const { g } = loadGas({ Drivers: d });
+  const r = post(g, { type: "validate", driverId: "TX-AAAAA" });
+  eq([r.valid, r.active, r.name], [true, true, "Ann Driver"]);
+  eq(post(g, { type: "validate", driverId: "TX-BBBBB" }).active, false);
 });
-t("refusals: no token, suspended driver, bad outcome, bad date, formula injection", () => {
-  const { g, book } = loadGas({ Drivers: drivers() });
-  eq(post(g, { type: "vehicleCheck", check: goodCheck }).code, "badtoken");
-  eq(post(g, { type: "vehicleCheck", token: g.makeToken_("TX-BBBBB"), check: goodCheck }).code, "badtoken");
+t("columns by heading: a sync onto rearranged Trips writes each value under its heading, once", () => {
+  const head = shuffled(g0().TRIP_HEADERS, "Office note");
+  const trips = new FakeSheet("Trips", [head, head.map(h => h === "Office note" ? "=SUM(1,1)" : "")]);
+  trips.rows[1] = head.map(h => h === "Office note" ? "kept" : h === "Trip ID" ? "old-1" : h === "Driver ID" ? "TX-AAAAA" : "");
+  const log = new FakeSheet("Log", [["App Timestamp", "Action", "Office", "Driver Name", "Driver ID", "Timestamp"]]);
+  const { g } = loadGas({ Drivers: drivers(), Trips: trips, Log: log });
   const tok = g.makeToken_("TX-AAAAA");
-  eq(post(g, { type: "vehicleCheck", token: tok, check: { ...goodCheck, outcome: "Fine-ish" } }).code, "invalid");
-  eq(post(g, { type: "vehicleCheck", token: tok, check: { ...goodCheck, date: "31/02/2026, 10:00:00" } }).code, "invalid");
-  eq(post(g, { type: "vehicleCheck", token: tok, check: { ...goodCheck, odometer: "-5" } }).code, "invalid");
-  eq(post(g, { type: "vehicleCheck", token: tok, check: { ...goodCheck, checkId: "c-2", vehicle: "=HYPERLINK(1)" } }).status, "ok");
-  const sh = book.sheets["Vehicle Checks"];
-  ok(String(sh.rows[1][sh.rows[0].indexOf("Vehicle")]).startsWith("'="), "not escaped");
+  const trip = { tripId: "t-9", date: "19/11/2026, 10:00:00", miles: "2.00", time: "00:10:00", fare: 7.4, meteredFare: 7.4, tariff: "Night", extras: [], vehicleReg: "AB12CDE" };
+  const r = post(g, { type: "sync", token: tok, trips: [trip, { ...trip, tripId: "old-1" }] });
+  eq([r.inserted, r.skipped], [1, 1], JSON.stringify(r));
+  const row = trips.rows[2], at = h => row[head.indexOf(h)];
+  eq([at("Trip ID"), at("Driver Name"), at("Tariff"), at("Fare (£)"), at("Vehicle Reg")], ["t-9", "Ann Driver", "Night", 7.4, "AB12 CDE"]);
+  ok(!trips.writes.includes("3:" + (head.indexOf("Office note") + 1)), "the office's own column was written to");
+  eq(trips.rows[1][head.indexOf("Office note")], "kept");
+  eq(post(g, { type: "instantLog", token: tok, action: "Started Trip", timestamp: "19/11/2026, 10:00:00" }).status, "ok");
+  const lr = log.rows[1], la = h => lr[log.rows[0].indexOf(h)];
+  eq([la("Driver ID"), la("Action")], ["TX-AAAAA", "Started Trip"]);
+  ok(!log.writes.includes("2:3"), "the office's own Log column was written to");
+});
+t("columns by heading: Summary formulas point at the right columns wherever they are", () => {
+  const head = shuffled(g0().TRIP_HEADERS, "Office note");
+  const { g, book } = loadGas({ Drivers: drivers(), Trips: new FakeSheet("Trips", [head]) });
+  g.buildSummary();
+  const L = h => g.colLetter(head.indexOf(h) + 1);
+  const f = book.sheets.Summary.rows;
+  eq(f[7][1], "=SUM(Trips!" + L("Fare (£)") + "2:" + L("Fare (£)") + ")");
+  ok(String(f[4][1]).includes("Trips!" + L("Trip Date") + "2:"), f[4][1]);
+  ok(String(f[18][0]).startsWith("=IFERROR(QUERY({Trips!" + L("Trip Date") + "2:"), f[18][0]);
+});
+t("Add missing headers adds at the end, never relabels", () => {
+  const trips = new FakeSheet("Trips", [["Trip ID", "Fare (£)", "My column"]]);
+  const { g } = loadGas({ Drivers: drivers(), Trips: trips, Log: new FakeSheet("Log") });
+  g.fixHeaders();
+  eq(trips.rows[0].slice(0, 4), ["Trip ID", "Fare (£)", "My column", "Sync Timestamp"]);
+  eq(trips.rows[0].length, 3 + g.TRIP_HEADERS.length - 2);
+});
+t("protection: warning-only locks, Drivers heading row only, nightly relock", () => {
+  const { g, book } = loadGas({ Drivers: drivers(), Trips: new FakeSheet("Trips", [["Trip ID"]]), Log: new FakeSheet("Log", [["Action"]]) });
+  g.lockSheet();
+  const ps = book.protections;
+  ok(ps.every(p => p.warn && p.desc.startsWith("Taxi Meter lock")), "not all warning-only");
+  eq(ps.filter(p => p.type === "SHEET").map(p => p.range.getSheet().name).sort(), ["Log", "Trips"]);
+  ok(ps.some(p => p.type === "RANGE" && p.range.sheet.name === "Drivers" && p.range.r === 1 && p.range.nr === 1), "Drivers heading row");
+  eq(g._triggers.length, 1);
+  g.lockSheet(); eq(g._triggers.length, 1, "trigger made twice");
+  eq(g.locksMissing_(book), []);
+  g.unlockSheet(); eq(book.protections.length, 0);
+  eq(g.locksMissing_(book).sort(), ["Drivers", "Log", "Trips"]);
+  g.relockIfNeeded(); eq(g.locksMissing_(book), []);
 });
 t("validate and doGet carry the sheet version", () => {
   const { g } = loadGas({ Drivers: drivers() });
@@ -187,6 +238,14 @@ t("every $(\"id\") the script asks for is in the markup", () => {
 t("APP_VERSION matches the service worker's note", () => {
   const v = /const APP_VERSION = "([^"]+)"/.exec(html)[1];
   ok(read("sw.js").includes("app " + v), "sw.js CACHE_VERSION comment does not name app " + v);
+});
+t("vehicle checks stay on the phone: nothing about them is sent", () => {
+  const js = scripts.join("\n");
+  ok(!/type:\s*"vehicleCheck"/.test(js), "index.html still posts a vehicleCheck");
+  ok(!/vehicleCheck|Vehicle Checks/.test(read("Code.gs")), "Code.gs still files vehicle checks");
+  const pre = /async function preflightVehicle[\s\S]*?\n}\n/.exec(js)[0];
+  ok(!/postToBackend|notifyOwner/.test(pre), "the start-trip prompts report to the backend");
+  ok(/notifyOwner\(validatedDriverId,validatedDriverName,"Started Trip"\+\(destination\?" to "\+destination\.label:""\)\)/.test(js), "Started Trip log carries extra detail");
 });
 t("the service worker precaches the new files", () => {
   const sw = read("sw.js");
