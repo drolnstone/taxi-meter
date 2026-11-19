@@ -18,7 +18,10 @@
     Delete it at openrouteservice.org and issue a fresh one. Storing
     the same key here does not un-publish it.
 
-    Trips sheet layout, columns A to X:
+    Trips headings, in the order a fresh sheet gets them. From sheet 1.2.0
+    every column is found by its heading, so the office may move, insert or
+    add columns freely. Only renaming a heading matters, and the heading rows
+    are protected (Taxi Meter → Protect the sheet).
       A Sync Timestamp   B Driver ID       C Driver Name     D Trip Date
       E Distance (mi)    F Duration        G Fare (£)        H Tariff
       I Start Coords     J End Coords      K Trip ID
@@ -40,8 +43,6 @@
    change to this file. (The minibus app's "versions on the foot".) */
 var SHEET_VERSION = "1.2.0";
 
-var TRIP_ID_COL   = 11;   /* column K. Change this too if the sheet is ever reordered. */
-var TRIP_DATE_COL = 4;    /* column D. Must hold real dates or Summary reads zero. */
 
 var TRIP_HEADERS = [
   "Sync Timestamp", "Driver ID", "Driver Name", "Trip Date",
@@ -52,13 +53,10 @@ var TRIP_HEADERS = [
   "Metered Fare (£)", "Extras (£)", "Extras Detail", "Agreed Fare (£)",
   "Running Miles", "Waiting Time",
   /* From sheet 1.2.0: the registration the driver entered on the phone for
-     this trip. Added to an existing sheet automatically on the first sync. */
+     this trip. Added at the end of an existing sheet on the first sync. */
   "Vehicle Reg"
 ];
 
-/* Columns A to Q are the original layout. Rows written before the extras work
-   stop there, and the layout guard only insists on these being unmoved. */
-var TRIP_HEADERS_LEGACY_COUNT = 17;
 
 /* Permitted additional charges, from the council card. Soiling is a fixed figure;
    tolls vary, so they are free entry on the phone and only bounded here. */
@@ -82,7 +80,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu("Taxi Meter")
     .addItem("Check headers", "showHeaders")
-    .addItem("Fix headers", "fixHeaders")
+    .addItem("Add missing headers", "fixHeaders")
     .addItem("Repair trip dates", "repairTripDates")
     .addSeparator()
     .addItem("Build or rebuild Summary tab", "buildSummary")
@@ -95,6 +93,9 @@ function onOpen() {
     .addItem("Check security setup", "checkSecuritySetup")
     .addSeparator()
     .addItem("Create missing sheets (fresh install)", "setupHeaders")
+    .addSeparator()
+    .addItem("Protect the sheet", "lockSheet")
+    .addItem("Unprotect the sheet", "unlockSheet")
     .addToUi();
 }
 
@@ -351,13 +352,13 @@ function handleInstantLog(sheet, data) {
   try {
     lock.waitLock(10000);
     acquired = true;
-    logSheet.appendRow([
-      Utilities.formatDate(new Date(), "Europe/London", "dd/MM/yyyy, HH:mm:ss"),
-      driverId,
-      whoIs.name,
-      sanitiseCell_(data.action),
-      sanitiseCell_(data.timestamp)
-    ]);
+    writeRowsByHeader_(logSheet, ensureHeaders_(logSheet, LOG_HEADERS), [{
+      "Timestamp":     Utilities.formatDate(new Date(), "Europe/London", "dd/MM/yyyy, HH:mm:ss"),
+      "Driver ID":     driverId,
+      "Driver Name":   whoIs.name,
+      "Action":        sanitiseCell_(data.action),
+      "App Timestamp": sanitiseCell_(data.timestamp)
+    }]);
   } catch (err) {
     Logger.log("instantLog: lock timeout, entry dropped for " + driverId);
     return respond({ status: "error", message: "Log busy, entry not written" });
@@ -409,7 +410,8 @@ function handleSync(sheet, data) {
   }
 
   try {
-    var existingTripIds = getExistingTripIds(tripsSheet);
+    var cols = ensureHeaders_(tripsSheet, TRIP_HEADERS);
+    var existingTripIds = getExistingTripIds(tripsSheet, cols);
     var rowsToWrite = [];
 
     trips.forEach(function (trip, idx) {
@@ -446,48 +448,43 @@ function handleSync(sheet, data) {
          reading; permitted extras are added on top of whichever applied. */
       var charged = round2((agreed === "" ? metered : Number(agreed)) + ex.total);
 
-      rowsToWrite.push([
-        Utilities.formatDate(new Date(), "Europe/London", "dd/MM/yyyy, HH:mm:ss"),
-        driverId,
-        driverNm,
-        tripDate,
-        round2(miles),
-        sanitiseCell_(trip.time || "00:00:00"),
-        charged,
-        tariff,
-        startStr,
-        endStr,
-        tripId,
-        sanitiseCell_(trip.destination),
-        numOrBlank(trip.quotedLow),
-        numOrBlank(trip.quotedHigh),
-        numOrBlank(trip.quotedMiles),
-        numOrBlank(trip.estimatedMiles),
-        numOrBlank(trip.gapEvents),
-        metered,
-        ex.total ? ex.total : "",
-        sanitiseCell_(ex.detail),
-        agreed,
-        numOrBlank(trip.runningMiles),
-        sanitiseCell_(trip.waitingTime),
-        sanitiseCell_(normaliseReg_(trip.vehicleReg))
-      ]);
+      var row = {};
+      row["Sync Timestamp"]   = Utilities.formatDate(new Date(), "Europe/London", "dd/MM/yyyy, HH:mm:ss");
+      row["Driver ID"]        = driverId;
+      row["Driver Name"]      = driverNm;
+      row["Trip Date"]        = tripDate;
+      row["Distance (mi)"]    = round2(miles);
+      row["Duration"]         = sanitiseCell_(trip.time || "00:00:00");
+      row["Fare (£)"]         = charged;
+      row["Tariff"]           = tariff;
+      row["Start Coords"]     = startStr;
+      row["End Coords"]       = endStr;
+      row["Trip ID"]          = tripId;
+      row["Destination"]      = sanitiseCell_(trip.destination);
+      row["Quoted Low (£)"]   = numOrBlank(trip.quotedLow);
+      row["Quoted High (£)"]  = numOrBlank(trip.quotedHigh);
+      row["Quoted Miles"]     = numOrBlank(trip.quotedMiles);
+      row["Estimated Miles"]  = numOrBlank(trip.estimatedMiles);
+      row["Gap Events"]       = numOrBlank(trip.gapEvents);
+      row["Metered Fare (£)"] = metered;
+      row["Extras (£)"]       = ex.total ? ex.total : "";
+      row["Extras Detail"]    = sanitiseCell_(ex.detail);
+      row["Agreed Fare (£)"]  = agreed;
+      row["Running Miles"]    = numOrBlank(trip.runningMiles);
+      row["Waiting Time"]     = sanitiseCell_(trip.waitingTime);
+      row["Vehicle Reg"]      = sanitiseCell_(normaliseReg_(trip.vehicleReg));
+      rowsToWrite.push(row);
 
       existingTripIds[dupKey] = true;
       syncedIds.push(tripId);
       inserted++;
     });
 
-    /* Single block write. Faster than appendRow per trip, and a timeout
-       part way through cannot leave half a trip on the sheet. */
+    /* Each column found by its heading. One write per run of adjacent
+       columns, so a timeout cannot leave half a trip on the sheet. */
     if (rowsToWrite.length) {
-      var layoutErr = ensureTripLayout_(tripsSheet, rowsToWrite.length);
-      if (layoutErr) return respond({ status: "error", message: layoutErr });
-
-      var startRow = tripsSheet.getLastRow() + 1;
-      tripsSheet.getRange(startRow, 1, rowsToWrite.length, TRIP_HEADERS.length)
-                .setValues(rowsToWrite);
-      tripsSheet.getRange(startRow, TRIP_DATE_COL, rowsToWrite.length, 1)
+      var startRow = writeRowsByHeader_(tripsSheet, cols, rowsToWrite);
+      tripsSheet.getRange(startRow, cols["Trip Date"], rowsToWrite.length, 1)
                 .setNumberFormat("dd/MM/yyyy HH:mm:ss");
     }
   } finally {
@@ -508,12 +505,19 @@ function lookupDriver(sheet, driverId) {
   var driversSheet = sheet.getSheetByName("Drivers");
   if (!driversSheet) return { valid: false, active: false, name: "" };
 
+  /* By heading, so a column the office inserts on Drivers cannot turn a name
+     into an ID or switch everyone's Active flag. */
+  var map = headerMap_(driversSheet);
+  var cId = map["Driver ID"], cName = map["Name"], cAct = activeCol_(map);
+  if (!cId) return { valid: false, active: false, name: "" };
+
   var rows = driversSheet.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {
-    var rowId = String(rows[i][0]).trim().toUpperCase();
+    var rowId = String(rows[i][cId - 1]).trim().toUpperCase();
     if (rowId === driverId) {
-      var isActive = (rows[i][2] === true || String(rows[i][2]).trim().toUpperCase() === "TRUE");
-      return { valid: true, active: isActive, name: String(rows[i][1] || "").trim() };
+      var a = cAct ? rows[i][cAct - 1] : "";
+      var isActive = (a === true || String(a).trim().toUpperCase() === "TRUE");
+      return { valid: true, active: isActive, name: cName ? String(rows[i][cName - 1] || "").trim() : "" };
     }
   }
   return { valid: false, active: false, name: "" };
@@ -543,58 +547,26 @@ function parseUkDate_(s) {
   return d;
 }
 
-/* Two things have to be true before a positional block write is safe: the
-   original columns must still be where the code thinks they are, and the sheet
-   must physically have enough columns and rows to receive the write.
-
-   getRange().setValues() does NOT grow the grid the way appendRow() does, so a
-   sheet that reaches its row limit would otherwise start throwing on every sync,
-   for every driver, until somebody noticed. */
-function ensureTripLayout_(sh, rowsNeeded) {
-  var head = sh.getRange(1, 1, 1, Math.max(sh.getMaxColumns(), TRIP_HEADERS.length)).getValues()[0];
-
-  for (var c = 0; c < TRIP_HEADERS_LEGACY_COUNT; c++) {
-    if (String(head[c] || "").trim() !== TRIP_HEADERS[c]) {
-      return "Trips column " + colLetter(c + 1) + " reads '" + String(head[c] || "") +
-             "' but should read '" + TRIP_HEADERS[c] + "'. Syncing is paused so rows " +
-             "cannot be written out of alignment. Run Taxi Meter → Fix headers.";
-    }
-  }
-
-  if (sh.getMaxColumns() < TRIP_HEADERS.length) {
-    sh.insertColumnsAfter(sh.getMaxColumns(), TRIP_HEADERS.length - sh.getMaxColumns());
-  }
-  /* Fill in any header added since this sheet was created, without touching one
-     that already carries the right text. */
-  for (var k = TRIP_HEADERS_LEGACY_COUNT; k < TRIP_HEADERS.length; k++) {
-    if (String(head[k] || "").trim() !== TRIP_HEADERS[k]) {
-      sh.getRange(1, k + 1).setValue(TRIP_HEADERS[k]).setFontWeight("bold");
-    }
-  }
-
-  var lastRow = sh.getLastRow();
-  var short   = (lastRow + rowsNeeded) - sh.getMaxRows();
-  if (short > 0) sh.insertRowsAfter(sh.getMaxRows(), short + 500);
-
-  return null;
-}
-
 /* Keyed on driver AND trip so the map stays correct under any future ID scheme,
    and built on a null prototype so a trip whose ID happens to be "constructor"
    or "__proto__" is not mistaken for a duplicate and silently dropped. */
-function getExistingTripIds(tripsSheet) {
+function getExistingTripIds(tripsSheet, cols) {
   var map  = Object.create(null);
   var last = tripsSheet.getLastRow();
   if (last < 2) return map;
+  cols = cols || headerMap_(tripsSheet);
+  var cDrv = cols["Driver ID"], cTrip = cols["Trip ID"];
+  if (!cDrv || !cTrip) return map;
 
   /* Retries are always recent. Reading the whole column keeps the script lock
      held for longer and longer as the sheet grows, for no extra safety. */
-  var from = Math.max(2, last - 5000);
-  var rows = tripsSheet.getRange(from, 2, last - from + 1, TRIP_ID_COL - 1).getValues();
-  rows.forEach(function (row) {
-    var id = String(row[TRIP_ID_COL - 2]).trim();
-    if (id) map[String(row[0]).trim().toUpperCase() + "|" + id] = true;
-  });
+  var from = Math.max(2, last - 5000), n = last - from + 1;
+  var drv  = tripsSheet.getRange(from, cDrv, n, 1).getValues();
+  var ids  = tripsSheet.getRange(from, cTrip, n, 1).getValues();
+  for (var i = 0; i < n; i++) {
+    var id = String(ids[i][0]).trim();
+    if (id) map[String(drv[i][0]).trim().toUpperCase() + "|" + id] = true;
+  }
   return map;
 }
 
@@ -789,6 +761,14 @@ function checkSecuritySetup() {
     : "TIMEZONE MISMATCH. Script is " + scriptTz + ", spreadsheet is " + sheetTz +
       ". Trip dates will be shifted. Fix in File → Settings and Project Settings.");
 
+  /* The minibus sheet's health check names any tab left unlocked. */
+  var unlocked = [];
+  try { unlocked = locksMissing_(SpreadsheetApp.getActiveSpreadsheet()); } catch (err) {}
+  out.push("");
+  out.push(unlocked.length
+    ? "UNPROTECTED: " + unlocked.join(", ") + ". Run Taxi Meter → Protect the sheet."
+    : "Protection: Trips, Log, Summary and the Drivers heading row are locked (warning only).");
+
   out.push("");
   out.push("Neither value is ever sent to the browser.");
   out.push("After changing either: Deploy → Manage deployments → edit → New version.");
@@ -807,32 +787,39 @@ function showHeaders() {
   out.push(checkSheetHeaders(ss, "Trips",   TRIP_HEADERS));
   out.push(checkSheetHeaders(ss, "Drivers", DRIVER_HEADERS));
   out.push(checkSheetHeaders(ss, "Log",     LOG_HEADERS));
+  out.push("Columns are found by heading, so their order does not matter.");
 
   var report = out.join("\n\n");
   Logger.log(report);
   toast(report);
 }
 
+/* Missing and doubled headings. Order is not checked: it does not matter. */
 function checkSheetHeaders(ss, name, expected) {
   var sh = ss.getSheetByName(name);
   if (!sh) return name + ": sheet not found.";
-
-  var row1 = sh.getRange(1, 1, 1, sh.getMaxColumns()).getValues()[0];
-  var bad  = [];
-
-  for (var i = 0; i < expected.length; i++) {
-    var actual = (i < row1.length) ? String(row1[i]).trim() : "(no column)";
-    if (actual !== expected[i]) {
-      bad.push("  " + colLetter(i + 1) + ": expected '" + expected[i] + "', found '" + actual + "'");
-    }
+  var map = headerMap_(sh);
+  var missing = expected.filter(function (h) {
+    return !(map[h] || (name === "Drivers" && h === DRIVER_HEADERS[2] && activeCol_(map)));
+  });
+  var seen = {}, doubled = [];
+  if (sh.getLastColumn() > 0) {
+    sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].forEach(function (h) {
+      var k = String(h || "").trim();
+      if (!k) return;
+      if (seen[k] && expected.indexOf(k) >= 0 && doubled.indexOf(k) < 0) doubled.push(k);
+      seen[k] = true;
+    });
   }
-
-  if (!bad.length) return name + ": all " + expected.length + " headers correct.";
-  return name + ": " + bad.length + " header(s) wrong.\n" + bad.join("\n");
+  if (!missing.length && !doubled.length) return name + ": all " + expected.length + " headings present.";
+  var out = name + ":";
+  if (missing.length) out += "\n  missing: " + missing.join(", ") + " (Add missing headers puts them at the end)";
+  if (doubled.length) out += "\n  appears twice: " + doubled.join(", ") + " (the first is used; rename or delete the other)";
+  return out;
 }
 
-/* Overwrites row 1 on all three sheets. Safe because every writer in this
-   script addresses columns by position, so the header row carries no logic. */
+/* Adds any heading a tab lacks, at the end. Never relabels or moves a
+   column, because the headings are what every reader and writer goes by. */
 function fixHeaders() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var out = [];
@@ -840,18 +827,6 @@ function fixHeaders() {
   out.push(writeHeaders(ss, "Trips",   TRIP_HEADERS));
   out.push(writeHeaders(ss, "Drivers", DRIVER_HEADERS));
   out.push(writeHeaders(ss, "Log",     LOG_HEADERS));
-
-  /* The old check here read back the header this function had written four lines
-     earlier, so it could only ever report success. What actually matters is
-     whether the DATA under the headers is aligned, so a data row is sampled. */
-  var idCheck = ss.getSheetByName("Trips");
-  if (idCheck && idCheck.getLastRow() > 1) {
-    var sample = String(idCheck.getRange(2, TRIP_ID_COL).getValue()).trim();
-    out.push(sample === "" || /^[0-9a-f-]{16,}$/i.test(sample)
-      ? "Column " + colLetter(TRIP_ID_COL) + " holds trip IDs. Duplicate checking is aligned."
-      : "WARNING: " + colLetter(TRIP_ID_COL) + "2 reads '" + sample + "', which is not a trip ID. " +
-        "Check the Trips columns have not been reordered.");
-  }
 
   var report = out.join("\n");
   Logger.log(report);
@@ -862,14 +837,10 @@ function writeHeaders(ss, name, headers) {
   var sh = ss.getSheetByName(name);
   if (!sh) return name + ": sheet not found, skipped.";
 
-  if (sh.getMaxColumns() < headers.length) {
-    sh.insertColumnsAfter(sh.getMaxColumns(), headers.length - sh.getMaxColumns());
-  }
-
   /* If the sheet has data but no header row, row 1 is a real record and
-     overwriting it would destroy it. Detect that before writing. */
+     writing headings beside it would hide it. Detect that before writing. */
   if (sh.getLastRow() > 0) {
-    var row1 = sh.getRange(1, 1, 1, Math.min(3, sh.getMaxColumns())).getValues()[0];
+    var row1 = sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getValues()[0];
     var looksLikeData = row1.some(function (c) {
       return String(c || "").trim().toUpperCase().indexOf("TX-") === 0;
     });
@@ -878,10 +849,12 @@ function writeHeaders(ss, name, headers) {
     }
   }
 
-  sh.getRange(1, 1, 1, headers.length).setValues([headers]);
-  sh.getRange(1, 1, 1, headers.length).setFontWeight("bold");
-  sh.setFrozenRows(1);
-  return name + ": " + headers.length + " headers written.";
+  var before = Object.keys(headerMap_(sh)).length;
+  var want = headers.slice();
+  /* Drivers' Active column may carry an older wording; do not add a second. */
+  if (name === "Drivers" && activeCol_(headerMap_(sh))) want = want.filter(function (h) { return h !== DRIVER_HEADERS[2]; });
+  var after = Object.keys(ensureHeaders_(sh, want)).length;
+  return name + ": " + (after - before ? (after - before) + " heading(s) added at the end." : "nothing missing.");
 }
 
 /* Converts the Trip Date column from the phone's text into real dates.
@@ -893,8 +866,10 @@ function repairTripDates() {
 
   var last = sh.getLastRow();
   if (last < 2) { toast("No trip rows to repair."); return; }
+  var col = headerMap_(sh)["Trip Date"];
+  if (!col) { toast("The Trips tab has no 'Trip Date' column."); return; }
 
-  var values  = sh.getRange(2, TRIP_DATE_COL, last - 1, 1).getValues();
+  var values  = sh.getRange(2, col, last - 1, 1).getValues();
   var fixed   = 0, already = 0, blank = 0, failed = 0;
   var samples = [];
 
@@ -908,7 +883,7 @@ function repairTripDates() {
     if (d) {
       /* Only cells that actually changed are written back. Writing the whole
          column would replace any formula in it with its current value. */
-      sh.getRange(i + 2, TRIP_DATE_COL).setValue(d).setNumberFormat("dd/MM/yyyy HH:mm:ss");
+      sh.getRange(i + 2, col).setValue(d).setNumberFormat("dd/MM/yyyy HH:mm:ss");
       fixed++;
     } else {
       failed++;
@@ -929,11 +904,7 @@ function repairTripDates() {
   toast(msg);
 }
 
-function colLetter(n) {
-  var s = "";
-  while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - m - 1) / 26; }
-  return s;
-}
+
 
 /* ============================================================
    Summary tab
@@ -941,12 +912,21 @@ function colLetter(n) {
 
 /* Writes formulas, not values, so the tab recalculates on every sync
    with no need to run anything again. Safe to re-run at any time.
-   Everything here depends on column D holding real dates. If Today,
+   Everything here depends on Trip Date holding real dates. If Today,
    This week and This month all read £0.00 while Lifetime is right,
    run Repair trip dates. */
 function buildSummary() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  if (!ss.getSheetByName("Trips")) { toast("No Trips sheet found."); return; }
+  var trips = ss.getSheetByName("Trips");
+  if (!trips) { toast("No Trips sheet found."); return; }
+
+  /* Every column is looked up by its heading at build time. Once written,
+     Sheets keeps the formulas pointing at the same columns when Trips columns
+     are moved or inserted, so the Summary follows them. */
+  var cols = ensureHeaders_(trips, TRIP_HEADERS);
+  var C = function (h) { var L = colLetter(colOf_(cols, h, "Trips")); return "Trips!" + L + "2:" + L; };
+  var FARE = C("Fare (£)"), DATE = C("Trip Date"), ID = C("Driver ID"), NAME = C("Driver Name"),
+      MILES = C("Distance (mi)");
 
   var sh = ss.getSheetByName("Summary");
   if (sh) sh.clear(); else sh = ss.insertSheet("Summary");
@@ -967,22 +947,22 @@ function buildSummary() {
   ];
   sh.getRange(5, 1, labels.length, 1).setValues(labels);
 
-  /* Column G is what the passenger paid, so every headline here is real income.
-     R, S and U break that down and are blank on rows written before extras
+  /* Fare (£) is what the passenger paid, so every headline here is real income.
+     Metered, Extras and Agreed break that down and are blank on rows written before extras
      existed, which sums to zero rather than erroring. */
   sh.getRange(5, 2, 12, 1).setFormulas([
-    ['=SUMIFS(Trips!G2:G,Trips!D2:D,">="&TODAY(),Trips!D2:D,"<"&TODAY()+1)'],
-    ['=SUMIFS(Trips!G2:G,Trips!D2:D,">="&' + monday + ',Trips!D2:D,"<"&' + monday + '+7)'],
-    ['=SUMIFS(Trips!G2:G,Trips!D2:D,">="&EOMONTH(TODAY(),-1)+1,Trips!D2:D,"<"&EOMONTH(TODAY(),0)+1)'],
-    ['=SUM(Trips!G2:G)'],
-    ['=COUNTA(Trips!B2:B)'],
-    ['=IFERROR(AVERAGE(Trips!G2:G),0)'],
-    ['=SUM(Trips!E2:E)'],
-    ['=SUM(Trips!P2:P)'],
-    ['=SUM(Trips!Q2:Q)'],
-    ['=SUM(Trips!R2:R)'],
-    ['=SUM(Trips!S2:S)'],
-    ['=COUNT(Trips!U2:U)']
+    ['=SUMIFS(' + FARE + ',' + DATE + ',">="&TODAY(),' + DATE + ',"<"&TODAY()+1)'],
+    ['=SUMIFS(' + FARE + ',' + DATE + ',">="&' + monday + ',' + DATE + ',"<"&' + monday + '+7)'],
+    ['=SUMIFS(' + FARE + ',' + DATE + ',">="&EOMONTH(TODAY(),-1)+1,' + DATE + ',"<"&EOMONTH(TODAY(),0)+1)'],
+    ['=SUM(' + FARE + ')'],
+    ['=COUNTA(' + ID + ')'],
+    ['=IFERROR(AVERAGE(' + FARE + '),0)'],
+    ['=SUM(' + MILES + ')'],
+    ['=SUM(' + C("Estimated Miles") + ')'],
+    ['=SUM(' + C("Gap Events") + ')'],
+    ['=SUM(' + C("Metered Fare (£)") + ')'],
+    ['=SUM(' + C("Extras (£)") + ')'],
+    ['=COUNT(' + C("Agreed Fare (£)") + ')']
   ]);
 
   sh.getRange("B5:B8").setNumberFormat('£#,##0.00');
@@ -991,21 +971,23 @@ function buildSummary() {
   sh.getRange("B14:B15").setNumberFormat('£#,##0.00');
 
   sh.getRange("A18").setValue("Daily totals").setFontWeight("bold");
+  /* The QUERY takes its columns as an array, {date, id, name, fare, miles},
+     so it reads Col1..Col5 rather than sheet letters. */
   sh.getRange("A19").setFormula(
-    '=IFERROR(QUERY(Trips!A2:W,' +
-    '"select toDate(D), B, C, count(G), sum(G), sum(E) ' +
-    'where B is not null ' +
-    'group by toDate(D), B, C ' +
-    'order by toDate(D) desc ' +
-    "label toDate(D) 'Date', B 'Driver ID', C 'Driver', count(G) 'Trips', sum(G) 'Fare', sum(E) 'Miles' " +
-    "format toDate(D) 'dd/MM/yyyy', sum(G) '£#,##0.00', sum(E) '0.00'\"" +
+    '=IFERROR(QUERY({' + DATE + ',' + ID + ',' + NAME + ',' + FARE + ',' + MILES + '},' +
+    '"select toDate(Col1), Col2, Col3, count(Col4), sum(Col4), sum(Col5) ' +
+    'where Col2 is not null ' +
+    'group by toDate(Col1), Col2, Col3 ' +
+    'order by toDate(Col1) desc ' +
+    "label toDate(Col1) 'Date', Col2 'Driver ID', Col3 'Driver', count(Col4) 'Trips', sum(Col4) 'Fare', sum(Col5) 'Miles' " +
+    "format toDate(Col1) 'dd/MM/yyyy', sum(Col4) '£#,##0.00', sum(Col5) '0.00'\"" +
     ',0),"No trip data yet")'
   );
 
   sh.getRange("H18").setValue("Weekly totals, week beginning Monday").setFontWeight("bold");
   sh.getRange("H19").setFormula(
-    '=IFERROR(QUERY({ARRAYFORMULA(IF(NOT(ISNUMBER(Trips!D2:D)),"",INT(Trips!D2:D)-WEEKDAY(Trips!D2:D,3))),' +
-    'Trips!B2:B,Trips!G2:G,Trips!E2:E},' +
+    '=IFERROR(QUERY({ARRAYFORMULA(IF(NOT(ISNUMBER(' + DATE + ')),"",INT(' + DATE + ')-WEEKDAY(' + DATE + ',3))),' +
+    ID + ',' + FARE + ',' + MILES + '},' +
     '"select Col1, Col2, count(Col3), sum(Col3), sum(Col4) ' +
     'where Col2 is not null ' +
     'group by Col1, Col2 ' +
@@ -1019,6 +1001,7 @@ function buildSummary() {
   sh.setColumnWidth(2, 140);
   sh.setFrozenRows(4);
 
+  relockIfNeeded();
   toast("Summary tab built. It refreshes itself from now on.\n\n" +
         "If the dated totals read zero, run Taxi Meter → Repair trip dates.");
 }
@@ -1035,21 +1018,22 @@ function deactivateUnnamedDrivers() {
 
   var last = sh.getLastRow();
   if (last < 2) { toast("No driver rows found."); return; }
+  var map = headerMap_(sh), cId = map["Driver ID"], cName = map["Name"], cAct = activeCol_(map);
+  if (!cId || !cName || !cAct) { toast("Drivers needs 'Driver ID', 'Name' and 'Active' headings. Run Add missing headers."); return; }
 
-  var rows    = sh.getRange(2, 1, last - 1, 3).getValues();
+  var rows    = sh.getRange(2, 1, last - 1, sh.getLastColumn()).getValues();
   var changed = 0;
   var named   = 0;
 
   for (var i = 0; i < rows.length; i++) {
-    var id   = String(rows[i][0] || "").trim();
-    var name = String(rows[i][1] || "").trim();
+    var id   = String(rows[i][cId - 1] || "").trim();
+    var name = String(rows[i][cName - 1] || "").trim();
     if (!id) continue;
     if (name) { named++; continue; }
-    if (String(rows[i][2]).trim().toUpperCase() !== "FALSE") {
-      /* One cell, in the one column that needs it. Writing the whole A:C block
-         back would flatten any formula in the Drivers sheet into a static value,
-         including on rows this job deliberately skipped. */
-      sh.getRange(i + 2, 3).setValue(false);
+    if (String(rows[i][cAct - 1]).trim().toUpperCase() !== "FALSE") {
+      /* One cell, in the one column that needs it, so no formula elsewhere on
+         the row is flattened into a value. */
+      sh.getRange(i + 2, cAct).setValue(false);
       changed++;
     }
   }
@@ -1064,35 +1048,36 @@ function generateBulkIds() {
   var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Drivers");
   if (!sh) { toast("No Drivers sheet found."); return; }
 
-  /* lookupDriver skips row 1 as a header, so appending to a sheet with no header
-     row would put an ID somewhere the login path can never see it. */
-  if (sh.getLastRow() === 0 ||
-      String(sh.getRange(1, 1).getValue()).trim() !== DRIVER_HEADERS[0]) {
-    toast("The Drivers sheet has no header row. Run Taxi Meter → Fix headers first, " +
-          "otherwise the first ID would land in row 1 and could never sign in.");
+  /* lookupDriver reads row 1 as headings, so a tab without them would put an
+     ID somewhere sign-in can never see it. */
+  var map = headerMap_(sh), cId = map["Driver ID"], cAct = activeCol_(map);
+  if (!cId || !cAct) {
+    toast("The Drivers sheet has no 'Driver ID' and 'Active' headings. Run Taxi Meter → Add missing headers first, " +
+          "otherwise new IDs could never sign in.");
     return;
   }
 
   var existing = Object.create(null);
   sh.getDataRange().getValues().forEach(function (r) {
-    existing[String(r[0]).trim().toUpperCase()] = true;
+    existing[String(r[cId - 1]).trim().toUpperCase()] = true;
   });
 
   var chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   var added = 0, guard = 0, batch = [];
+  var activeHeading = Object.keys(map).filter(function (h) { return map[h] === cAct; })[0];
 
   while (added < 10 && guard++ < 500) {
     var id = "TX-";
     for (var j = 0; j < 5; j++) id += chars.charAt(Math.floor(Math.random() * chars.length));
     if (existing[id]) continue;          /* never issue the same ID twice */
     existing[id] = true;
-    batch.push([id, "", "FALSE"]);
+    var row = { "Driver ID": id };
+    row[activeHeading] = "FALSE";
+    batch.push(row);
     added++;
   }
 
-  if (batch.length) {
-    sh.getRange(sh.getLastRow() + 1, 1, batch.length, 3).setValues(batch);
-  }
+  writeRowsByHeader_(sh, map, batch);
   toast(added + " new driver ID(s) added, all inactive. Add a name and set Active to TRUE to issue one.");
 }
 
@@ -1100,14 +1085,207 @@ function generateBulkIds() {
 function setupHeaders() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
 
-  var drivers = ss.getSheetByName("Drivers") || ss.insertSheet("Drivers");
-  if (drivers.getLastRow() === 0) drivers.appendRow(DRIVER_HEADERS);
-
-  var trips = ss.getSheetByName("Trips") || ss.insertSheet("Trips");
-  if (trips.getLastRow() === 0) trips.appendRow(TRIP_HEADERS);
-
-  var log = ss.getSheetByName("Log") || ss.insertSheet("Log");
-  if (log.getLastRow() === 0) log.appendRow(LOG_HEADERS);
+  ensureHeaders_(ss.getSheetByName("Drivers") || ss.insertSheet("Drivers"), DRIVER_HEADERS);
+  ensureHeaders_(ss.getSheetByName("Trips")   || ss.insertSheet("Trips"),   TRIP_HEADERS);
+  ensureHeaders_(ss.getSheetByName("Log")     || ss.insertSheet("Log"),     LOG_HEADERS);
 
   fixHeaders();
+  lockSheet();
+}
+
+/* ============================================================
+   Columns by heading, never by position
+
+   From the minibus sheet (drolnstone/minibus-check: headerMap, colOf, and its
+   rule "find a column by its heading, never by counting to it"). The office can
+   move, insert or add columns on any tab and the app reads and writes straight
+   past them. Headings are the contract: rename one and the app adds a fresh
+   column with the right heading at the end rather than guessing.
+   ============================================================ */
+
+/* { heading: 1-based column }. If a heading appears twice the first wins,
+   because that is the one the data was written under. */
+function headerMap_(sh) {
+  var map = {};
+  if (!sh || sh.getLastColumn() < 1 || sh.getLastRow() < 1) return map;
+  sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].forEach(function (h, i) {
+    var k = String(h == null ? "" : h).trim();
+    if (k && map[k] === undefined) map[k] = i + 1;
+  });
+  return map;
+}
+
+/* Adds any wanted heading the tab lacks, at the end, and returns the map.
+   Never relabels or moves an existing column. */
+function ensureHeaders_(sh, wanted) {
+  var map = headerMap_(sh);
+  var next = 1;
+  Object.keys(map).forEach(function (k) { next = Math.max(next, map[k] + 1); });
+  wanted.forEach(function (h) {
+    if (map[h]) return;
+    if (next > sh.getMaxColumns()) sh.insertColumnsAfter(sh.getMaxColumns(), next - sh.getMaxColumns());
+    sh.getRange(1, next).setValue(h).setFontWeight("bold");
+    map[h] = next++;
+  });
+  if (sh.getFrozenRows() < 1) sh.setFrozenRows(1);
+  return map;
+}
+
+/* The column under a heading, or an error that names it. */
+function colOf_(map, heading, tab) {
+  var c = map[heading];
+  if (!c) throw new Error("The " + tab + " tab has no '" + heading + "' column. " +
+                          "Put the heading back exactly as it was, or run Taxi Meter → Add missing headers.");
+  return c;
+}
+
+/* The Drivers tab's Active column has carried more than one wording. */
+function activeCol_(map) {
+  if (map[DRIVER_HEADERS[2]]) return map[DRIVER_HEADERS[2]];
+  var k = Object.keys(map).filter(function (h) { return /^active\b/i.test(h); })[0];
+  return k ? map[k] : 0;
+}
+
+/* Writes rows given as { heading: value } objects below the last row, one
+   setValues per run of adjacent columns, so a column of the office's own (a
+   note, a formula) is never written over. */
+function writeRowsByHeader_(sh, map, objs) {
+  if (!objs.length) return 0;
+  var startRow = sh.getLastRow() + 1;
+  var short = (startRow + objs.length - 1) - sh.getMaxRows();
+  if (short > 0) sh.insertRowsAfter(sh.getMaxRows(), short + 500);
+
+  var cols = [];
+  Object.keys(objs[0]).forEach(function (h) { if (map[h]) cols.push({ h: h, c: map[h] }); });
+  cols.sort(function (a, b) { return a.c - b.c; });
+
+  var i = 0;
+  while (i < cols.length) {
+    var j = i;
+    while (j + 1 < cols.length && cols[j + 1].c === cols[j].c + 1) j++;
+    var run = cols.slice(i, j + 1);
+    var values = objs.map(function (o) { return run.map(function (x) { return o[x.h]; }); });
+    sh.getRange(startRow, run[0].c, objs.length, run.length).setValues(values);
+    i = j + 1;
+  }
+  return startRow;
+}
+
+/* One row as { heading: value }, for readers. */
+function rowObject_(map, row) {
+  var o = {};
+  Object.keys(map).forEach(function (h) { o[h] = row[map[h] - 1]; });
+  return o;
+}
+
+function colLetter(n) {
+  var s = "";
+  while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - m - 1) / 26; }
+  return s;
+}
+
+/* ============================================================
+   Protection
+
+   From the minibus sheet's lock set (applyLocks, locksMissing, relock at
+   3am). Warning-only, as there: the owner can still edit anything, but an
+   accidental keystroke on a trip record or a heading asks first. Strict
+   protection would not stop the owner at all, and would lock out anyone the
+   sheet is later shared with. The script runs as the owner, so its own writes
+   are never stopped.
+
+     Trips, Log, Summary   the whole tab (the app writes them)
+     Drivers               the heading row only (the office types the rest)
+   ============================================================ */
+
+var LOCK_TAG = "Taxi Meter lock";
+
+function lockPlan_(ss) {
+  var out = [];
+  [["Trips", "trip records, written by the app"], ["Log", "written by the app"],
+   ["Summary", "formulas, rebuilt from the menu"]].forEach(function (x) {
+    var sh = ss.getSheetByName(x[0]);
+    if (sh) out.push({ sh: sh, whole: true, note: x[1] });
+  });
+  var d = ss.getSheetByName("Drivers");
+  if (d) out.push({ sh: d, whole: false, note: "heading row: the app finds columns by these names" });
+  return out;
+}
+
+function applyLocks_(ss) {
+  removeLocks_(ss);
+  var skipped = [];
+  lockPlan_(ss).forEach(function (item) {
+    try {
+      var p = item.whole
+        ? item.sh.protect()
+        : item.sh.getRange(1, 1, 1, Math.max(1, item.sh.getLastColumn())).protect();
+      p.setDescription(LOCK_TAG + ": " + item.note);
+      p.setWarningOnly(true);
+    } catch (err) {
+      skipped.push(item.sh.getName() + " (" + String((err && err.message) || err) + ")");
+    }
+  });
+  /* Trips' heading row stays protected even if the whole-tab lock is removed
+     by hand: renaming a heading is the one edit that sends data astray. */
+  var t = ss.getSheetByName("Trips");
+  if (t && t.getLastColumn() > 0) {
+    try {
+      t.getRange(1, 1, 1, t.getLastColumn()).protect()
+       .setDescription(LOCK_TAG + ": heading row").setWarningOnly(true);
+    } catch (err) {}
+  }
+  return skipped;
+}
+
+function removeLocks_(ss) {
+  [SpreadsheetApp.ProtectionType.SHEET, SpreadsheetApp.ProtectionType.RANGE].forEach(function (type) {
+    ss.getProtections(type).forEach(function (p) {
+      if (String(p.getDescription() || "").indexOf(LOCK_TAG) === 0) p.remove();
+    });
+  });
+}
+
+/* Tabs in the plan with no lock of ours on them. */
+function locksMissing_(ss) {
+  var have = {};
+  [SpreadsheetApp.ProtectionType.SHEET, SpreadsheetApp.ProtectionType.RANGE].forEach(function (type) {
+    ss.getProtections(type).forEach(function (p) {
+      if (String(p.getDescription() || "").indexOf(LOCK_TAG) !== 0) return;
+      try { have[p.getRange().getSheet().getName()] = true; } catch (err) {}
+    });
+  });
+  return lockPlan_(ss).filter(function (i) { return !have[i.sh.getName()]; })
+                      .map(function (i) { return i.sh.getName(); });
+}
+
+/* The nightly timer, and after a tab is made. */
+function relockIfNeeded() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  try { if (locksMissing_(ss).length) applyLocks_(ss); } catch (err) { Logger.log("relock: " + err); }
+}
+
+/* One daily timer at about 3am, made once. */
+function ensureRelockTrigger_() {
+  var has = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === "relockIfNeeded"; });
+  if (!has) ScriptApp.newTrigger("relockIfNeeded").timeBased().everyDays(1).atHour(3).create();
+}
+
+function lockSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var skipped = applyLocks_(ss);
+  var timer = "";
+  try { ensureRelockTrigger_(); timer = "It locks itself again every night at about 3am."; }
+  catch (err) { timer = "The nightly relock could not be set up: " + (err && err.message ? err.message : err); }
+  toast("✓ The sheet is protected.\n\n" +
+        "Editing Trips, Log or Summary, or a heading on Drivers, now asks you to confirm first. " +
+        "You can still go ahead when you mean to: this stops the accidental keystroke, not you.\n\n" +
+        "Drivers below the heading row is edited freely.\n\n" + timer +
+        (skipped.length ? "\n\nCould not lock: " + skipped.join(", ") : ""));
+}
+
+function unlockSheet() {
+  removeLocks_(SpreadsheetApp.getActiveSpreadsheet());
+  toast("Unlocked. Nothing will warn you now. Run Taxi Meter → Protect the sheet when you are done; " +
+        "it also locks itself again overnight.");
 }

@@ -16,17 +16,32 @@ WHAT CHANGED SINCE YOUR LIVE VERSION
 - Settings shows "App 1.10.0 · Sheet 1.2.0" after Test connection.
 - Vehicle registration on every trip. The driver enters it once on the Meter
   tab (it is remembered), and Start trip asks for it if it is blank. It goes to
-  a new column X "Vehicle Reg" on Trips (added by the first sync, nothing to
+  a new "Vehicle Reg" column at the end of Trips (added by the first sync, nothing to
   do by hand), and onto the receipt, the PDFs and the CSV.
-- Code.gs: the Vehicle Reg column and the version number. Nothing else changes.
+- Sheet columns are found by their heading, never by position (the minibus
+  sheet's rule). Trips, Drivers, Log and the Summary formulas all follow the
+  headings, so columns can be moved, inserted or added. Only renaming a
+  heading matters. "Fix headers" is now "Add missing headers": it adds a
+  missing heading at the end and never relabels or moves one.
+- Sheet protection, ported from the minibus sheet: Trips, Log and Summary are
+  locked warning-only (an edit asks you to confirm first), the Drivers heading
+  row is locked, and it relocks itself every night at about 3am. Menu:
+  Taxi Meter → Protect the sheet / Unprotect the sheet. The security check
+  names any tab left unprotected.
 
 DEPLOY
 1. Paste Code.gs into the Apps Script editor, save, then
    Deploy → Manage deployments → edit → New version.
-2. Publish index.html, sw.js, vehicle.js, pdf.js and the vendor/ folder to the
+2. In the editor, run lockSheet once and accept the prompts. It asks for one
+   new permission (to set the nightly relock timer).
+3. Reload the spreadsheet, then Taxi Meter → Build or rebuild Summary tab, so
+   its formulas are made from the headings.
+4. Publish index.html, sw.js, vehicle.js, pdf.js and the vendor/ folder to the
    same folder as before.
 
 CHECKS AFTERWARDS
+0. Taxi Meter → Check security setup: no "UNPROTECTED" line.
+   Taxi Meter → Check headers: every tab "all headings present".
 A. Open the deployment URL in a browser: it shows "version": "1.2.0".
 B. Phone: Settings → Test connection reads App 1.10.0 · Sheet 1.2.0.
 C. Vehicle tab → Start today's check → Mark the rest Fine → Send → Save as PDF.
@@ -34,5 +49,5 @@ C. Vehicle tab → Start today's check → Mark the rest Fine → Send → Save 
 D. Settings → Vehicle check and reminders → Off: the Vehicle tab goes, and
    Start trip asks nothing. Turn it back On.
 E. Meter tab: enter the reg, finish a short trip. The receipt shows
-   "Vehicle: AB12 CDE" and the Trips row has it in column X.
+   "Vehicle: AB12 CDE" and the Trips row has it under "Vehicle Reg".
 F. Summary → Save as PDF. Earnings → Make a PDF statement.
