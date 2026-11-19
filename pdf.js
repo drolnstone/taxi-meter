@@ -219,7 +219,7 @@
     ];
     if (t.pickupLabel) trip.push(["From", t.pickupLabel]);
     if (t.destination) trip.push(["To", t.destination]);
-    if (opt.vehicle) trip.push(["Vehicle", opt.vehicle]);
+    if (t.vehicleReg || opt.vehicle) trip.push(["Vehicle", t.vehicleReg || opt.vehicle]);
     f.pairs("Journey", trip);
 
     var fare = [["Metered fare", money(t.meteredFare)]];

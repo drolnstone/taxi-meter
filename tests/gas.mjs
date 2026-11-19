@@ -16,6 +16,8 @@ class FakeRange {
   setValue(v) { this.sheet.set(this.r, this.c, v); return this; }
   setValues(vs) { vs.forEach((row, i) => row.forEach((v, j) => this.sheet.set(this.r + i, this.c + j, v))); return this; }
   setFontWeight() { return this; }
+  setNumberFormat() { return this; }
+  setNumberFormats() { return this; }
 }
 
 export class FakeSheet {
@@ -32,6 +34,7 @@ export class FakeSheet {
   getMaxColumns() { return this.maxCols; }
   getMaxRows() { return 1000; }
   insertColumnsAfter(after, n) { this.maxCols += n; }
+  insertRowsAfter() {}
   getRange(r, c, nr, nc) { return new FakeRange(this, r, c, nr, nc); }
   getDataRange() { return new FakeRange(this, 1, 1, Math.max(1, this.getLastRow()), Math.max(1, this.getLastColumn())); }
   appendRow(row) { this.rows.splice(this.getLastRow(), 0, row.slice()); }

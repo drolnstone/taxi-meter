@@ -345,6 +345,13 @@ details.more summary:focus-visible{outline:3px solid var(--focusRing);outline-of
 
   <div id="vehicleBanner" aria-live="polite"></div>
 
+  <div class="card">
+    <label class="fieldLabel" for="tripReg">Vehicle registration</label>
+    <input id="tripReg" type="text" placeholder="e.g. AB12 CDE" maxlength="12"
+           autocapitalize="characters" autocorrect="off" spellcheck="false" autocomplete="off">
+    <div id="tripRegStatus" class="statusLine" role="status" aria-live="polite"></div>
+  </div>
+
   <div class="card" id="destCard">
     <h3>Quote a job</h3>
     <label class="fieldLabel" for="pickupInput">Pick-up</label>
@@ -654,7 +661,7 @@ details.more summary:focus-visible{outline:3px solid var(--focusRing);outline-of
 
 /* Printed on Settings with the sheet's own version (the minibus app's
    "versions on the foot"). Bump with CACHE_VERSION in sw.js. */
-const APP_VERSION = "1.9.0"
+const APP_VERSION = "1.10.0"
 
 const SYNC_URL = "https://script.google.com/macros/s/AKfycbwfVdwML13iR7X_RQDB9ntchayc-byxHEWjp__Xcxiy9w0LmaepWt5VwAaYNd4BAppx/exec"
 
@@ -1160,7 +1167,7 @@ tabBar.addEventListener("click", e=>{
 
 /* The fixed dock and the software keyboard fight over the same space, which
    pushes the last address suggestions off screen. */
-for(const el of [driverInput, destInput, pickupInput, agreedInput]){
+for(const el of [driverInput, destInput, pickupInput, agreedInput, $("tripReg")]){
   el.addEventListener("focus", ()=>{ bottomDock.style.display = "none"; syncDockPadding() })
   el.addEventListener("blur",  ()=>{ setTimeout(()=>{ if(currentPage) renderPage(currentPage) }, 120) })
 }
@@ -2246,6 +2253,10 @@ async function startTrip(){
     navigate("signin"); driverInput.focus(); return
   }
 
+  if(!readVehicleReg()){
+    await tell("Vehicle registration needed", "Enter the registration of the vehicle you are driving. It goes on every trip sent to the office.")
+    navigate("home"); $("tripReg").focus(); return
+  }
   if(!(await preflightVehicle())) return
 
   actionBtn.disabled=true; actionBtn.textContent="Checking…"
@@ -2327,7 +2338,8 @@ function resetTrip(){
 function receiptText(t){
   let r = "Taxi Receipt\n\nDriver: "+(t.driverName||"")+"\nID: "+(t.driverId||"")+
     "\nDistance: "+t.miles+" mi\nTime: "+t.time+
-    "\nTariff: "+(t.tariff||"Day")+" rate"
+    "\nTariff: "+(t.tariff||"Day")+" rate"+
+    (t.vehicleReg ? "\nVehicle: "+t.vehicleReg : "")
   if(t.destination) r += "\nDestination: "+t.destination
   if(t.runningMiles !== undefined && t.runningMiles !== "")
     r += "\nCharged as: "+t.runningMiles+" mi running, "+t.waitingTime+" waiting"
@@ -2454,6 +2466,7 @@ function saveTrip(){
     estimatedMiles: gapDistanceTotal>0?toMiles(gapDistanceTotal):"0.00", gapEvents: gapEventCount,
     runningMiles: toMiles(chargeableDistance), waitingTime: formatTime(waitingSeconds),
     driverId: validatedDriverId, driverName: validatedDriverName,
+    vehicleReg: readVehicleReg(),
     synced: false, rejected: ""
   }
   trips.unshift(rec)
@@ -2498,7 +2511,7 @@ function openPastReceipt(tripId){
 function exportTrips(){
   const trips = readTrips()
   if(!trips.length){ setStatus(syncStatus,"Nothing to export yet."); return }
-  let csv="Driver ID,Driver Name,Date,Time,Duration,Total Charged (£),Metered Fare (£),Agreed Fare (£),Extras (£),Extras Detail,Tariff,Destination,Running Miles,Waiting Time,Quoted Low (£),Quoted High (£),Quoted Miles,Estimated Miles,Gap Events,Start Coords,End Coords,Trip ID\n"
+  let csv="Driver ID,Driver Name,Date,Time,Duration,Total Charged (£),Metered Fare (£),Agreed Fare (£),Extras (£),Extras Detail,Tariff,Destination,Running Miles,Waiting Time,Quoted Low (£),Quoted High (£),Quoted Miles,Estimated Miles,Gap Events,Start Coords,End Coords,Trip ID,Vehicle Reg\n"
   trips.forEach(t=>{
     const s=t.start?t.start.lat+" "+t.start.lng:"N/A", e=t.end?t.end.lat+" "+t.end.lng:"N/A"
     const datePart=String(t.date||"").split(", ")[0]||"", timePart=String(t.date||"").split(", ")[1]||""
@@ -2509,7 +2522,7 @@ function exportTrips(){
             t.meteredFare===undefined?"":t.meteredFare, t.agreedFare||"",
             exTotal?exTotal.toFixed(2):"", exDetail,
             t.tariff||"Day",t.destination,t.runningMiles||"",t.waitingTime||"",
-            t.quotedLow,t.quotedHigh,t.quotedMiles,t.estimatedMiles,t.gapEvents,s,e,t.tripId]
+            t.quotedLow,t.quotedHigh,t.quotedMiles,t.estimatedMiles,t.gapEvents,s,e,t.tripId,t.vehicleReg||""]
            .map(csvSafe).join(",")+"\n"
   })
   /* Excel assumes the system codepage without a BOM, which turns every £ into Â£. */
@@ -2821,6 +2834,25 @@ function readChecks(){ const v = readJson(CHECKS_KEY, []); return Array.isArray(
 function readRenewals(){ const v = readJson(RENEW_KEY, {}); return v && typeof v === "object" ? v : {} }
 function readVehicleReg(){ try{ return localStorage.vehicleReg || "" }catch(e){ return "" } }
 
+/* The reg goes on every trip sent to the sheet, so it lives outside the
+   optional vehicle check. Same tidy-up as the sheet's normaliseReg_. */
+function normaliseReg(v){
+  const s = String(v||"").toUpperCase().replace(/[^A-Z0-9 ]/g,"").replace(/\s+/g," ").trim()
+  const m = /^([A-Z]{2}\d{2}) ?([A-Z]{3})$/.exec(s)
+  return m ? m[1]+" "+m[2] : s.slice(0,12)
+}
+function saveVehicleReg(v){
+  const reg = normaliseReg(v)
+  try{ localStorage.vehicleReg = reg }catch(e){}
+  if($("tripReg").value !== reg) $("tripReg").value = reg
+  if(document.activeElement !== $("vehicleReg")) $("vehicleReg").value = reg
+  return reg
+}
+$("tripReg").addEventListener("change", e=>{
+  const reg = saveVehicleReg(e.target.value)
+  setStatus($("tripRegStatus"), reg ? "✓ Trips will be recorded against " + reg + "." : "", reg ? "ok" : "")
+})
+
 /* Today's latest check by whoever is signed in, or null. */
 function todaysCheck(){
   const today = new Date().toDateString()
@@ -3008,9 +3040,8 @@ $("checkSendBtn").addEventListener("click", async ()=>{
       : "Say what is wrong for each defect.", "bad")
     return
   }
-  const reg = $("vehicleReg").value.trim().toUpperCase()
+  const reg = $("vehicleReg").value.trim() ? saveVehicleReg($("vehicleReg").value) : ""
   const odo = $("odometer").value.trim()
-  try{ localStorage.vehicleReg = reg }catch(e){}
   const rec = {
     checkId: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : "c-"+Date.now()+"-"+Math.random().toString(16).slice(2),
     date: localTimestamp(), vehicle: reg, odometer: odo,
@@ -3194,6 +3225,7 @@ if(wasRunning && validatedDriverId){
 
 update(); renderHistory(); updateDashboard(); renderTariffTable(); renderStorage(); renderStuck()
 applyVehicleChoice()
+$("tripReg").value = readVehicleReg()
 scheduleSync()   /* anything left queued from a previous shift goes out on its own */
 
 /* Offline first load. Without this, Leaflet is fetched from the network on every

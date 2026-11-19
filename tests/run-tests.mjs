@@ -143,6 +143,20 @@ function loadGas(sheets) {
 }
 const drivers = () => new FakeSheet("Drivers", [["Driver ID", "Name", "Active (TRUE/FALSE)"], ["TX-AAAAA", "Ann Driver", true], ["TX-BBBBB", "Off Driver", false]]);
 const post = (g, body) => JSON.parse(g.doPost({ postData: { contents: JSON.stringify(body) } }).text);
+t("a trip carries its vehicle reg into the new column X, on an older 23-column sheet", () => {
+  const old = ["Sync Timestamp", "Driver ID", "Driver Name", "Trip Date", "Distance (mi)", "Duration", "Fare (£)", "Tariff",
+    "Start Coords", "End Coords", "Trip ID", "Destination", "Quoted Low (£)", "Quoted High (£)", "Quoted Miles",
+    "Estimated Miles", "Gap Events", "Metered Fare (£)", "Extras (£)", "Extras Detail", "Agreed Fare (£)", "Running Miles", "Waiting Time"];
+  const trips = new FakeSheet("Trips", [old]);
+  const { g } = loadGas({ Drivers: drivers(), Trips: trips });
+  const trip = { tripId: "t-1", date: "19/11/2026, 10:00:00", miles: "2.00", time: "00:10:00", fare: 7.4, meteredFare: 7.4,
+                 tariff: "Day", extras: [], vehicleReg: "ab12cde" };
+  const r = post(g, { type: "sync", token: g.makeToken_("TX-AAAAA"), trips: [trip] });
+  eq([r.status, r.inserted], ["ok", 1], JSON.stringify(r));
+  eq(trips.rows[0][23], "Vehicle Reg");
+  eq(trips.rows[1][23], "AB12 CDE");
+  eq(g.normaliseReg_("  y 123  abc "), "Y 123 ABC");
+});
 t("validate and doGet carry the sheet version", () => {
   const { g } = loadGas({ Drivers: drivers() });
   eq(post(g, { type: "validate", driverId: "TX-AAAAA" }).version, g.SHEET_VERSION);

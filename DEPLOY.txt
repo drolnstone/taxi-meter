@@ -1,7 +1,7 @@
 TAXI METER: DEPLOY NOTE
 
 YOU ARE ON:   none of PR #1 or #2 deployed yet (Apps Script untouched)
-GOING TO:     app 1.9.0 · sheet 1.2.0 · sw cache taxi-meter-v9
+GOING TO:     app 1.10.0 · sheet 1.2.0 · sw cache taxi-meter-v9
 
 WHAT CHANGED SINCE YOUR LIVE VERSION
 - Vehicle tab (the driver's own, on their phone only): a daily vehicle check
@@ -13,8 +13,12 @@ WHAT CHANGED SINCE YOUR LIVE VERSION
 - Settings → Vehicle check and reminders: On / Off, the driver's choice.
 - Receipts can be saved as a PDF; Earnings has an earnings statement PDF for
   this/last week, this/last month or the tax year to date.
-- Settings shows "App 1.9.0 · Sheet 1.2.0" after Test connection.
-- Code.gs only adds the version number; trips are unchanged.
+- Settings shows "App 1.10.0 · Sheet 1.2.0" after Test connection.
+- Vehicle registration on every trip. The driver enters it once on the Meter
+  tab (it is remembered), and Start trip asks for it if it is blank. It goes to
+  a new column X "Vehicle Reg" on Trips (added by the first sync, nothing to
+  do by hand), and onto the receipt, the PDFs and the CSV.
+- Code.gs: the Vehicle Reg column and the version number. Nothing else changes.
 
 DEPLOY
 1. Paste Code.gs into the Apps Script editor, save, then
@@ -24,9 +28,11 @@ DEPLOY
 
 CHECKS AFTERWARDS
 A. Open the deployment URL in a browser: it shows "version": "1.2.0".
-B. Phone: Settings → Test connection reads App 1.9.0 · Sheet 1.2.0.
+B. Phone: Settings → Test connection reads App 1.10.0 · Sheet 1.2.0.
 C. Vehicle tab → Start today's check → Mark the rest Fine → Send → Save as PDF.
    Nothing new appears on the sheet.
 D. Settings → Vehicle check and reminders → Off: the Vehicle tab goes, and
    Start trip asks nothing. Turn it back On.
-E. Finish a short trip → Save as PDF. Earnings → Make a PDF statement.
+E. Meter tab: enter the reg, finish a short trip. The receipt shows
+   "Vehicle: AB12 CDE" and the Trips row has it in column X.
+F. Summary → Save as PDF. Earnings → Make a PDF statement.

@@ -18,14 +18,14 @@
     Delete it at openrouteservice.org and issue a fresh one. Storing
     the same key here does not un-publish it.
 
-    Trips sheet layout, columns A to W:
+    Trips sheet layout, columns A to X:
       A Sync Timestamp   B Driver ID       C Driver Name     D Trip Date
       E Distance (mi)    F Duration        G Fare (£)        H Tariff
       I Start Coords     J End Coords      K Trip ID
       L Destination      M Quoted Low (£)  N Quoted High (£) O Quoted Miles
       P Estimated Miles  Q Gap Events
       R Metered Fare (£) S Extras (£)      T Extras Detail   U Agreed Fare (£)
-      V Running Miles    W Waiting Time
+      V Running Miles    W Waiting Time    X Vehicle Reg
 
     G "Fare (£)" is what the passenger actually paid: the metered fare, or an
     agreed fare where one was struck, PLUS any permitted additional charges.
@@ -50,7 +50,10 @@ var TRIP_HEADERS = [
   "Destination", "Quoted Low (£)", "Quoted High (£)", "Quoted Miles",
   "Estimated Miles", "Gap Events",
   "Metered Fare (£)", "Extras (£)", "Extras Detail", "Agreed Fare (£)",
-  "Running Miles", "Waiting Time"
+  "Running Miles", "Waiting Time",
+  /* From sheet 1.2.0: the registration the driver entered on the phone for
+     this trip. Added to an existing sheet automatically on the first sync. */
+  "Vehicle Reg"
 ];
 
 /* Columns A to Q are the original layout. Rows written before the extras work
@@ -466,7 +469,8 @@ function handleSync(sheet, data) {
         sanitiseCell_(ex.detail),
         agreed,
         numOrBlank(trip.runningMiles),
-        sanitiseCell_(trip.waitingTime)
+        sanitiseCell_(trip.waitingTime),
+        sanitiseCell_(normaliseReg_(trip.vehicleReg))
       ]);
 
       existingTripIds[dupKey] = true;
@@ -690,6 +694,14 @@ function sanitiseCell_(v) {
   if (s.length > 300) s = s.substring(0, 300);
   if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
   return s;
+}
+
+/* "ab12cde" and "AB12  CDE" both become "AB12 CDE" when they look like a
+   current-style UK registration; anything else is upper-cased and kept. */
+function normaliseReg_(v) {
+  var s = String(v == null ? "" : v).toUpperCase().replace(/[^A-Z0-9 ]/g, "").replace(/\s+/g, " ").trim();
+  var m = /^([A-Z]{2}\d{2}) ?([A-Z]{3})$/.exec(s);
+  return m ? m[1] + " " + m[2] : s.substring(0, 12);
 }
 
 function round2(n)      { return Math.round((parseFloat(n) || 0) * 100) / 100; }
