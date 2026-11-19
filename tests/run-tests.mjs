@@ -120,6 +120,16 @@ t("statement PDF splits a long period across pages", () => {
   ok(doc.getNumberOfPages() >= 3, "pages " + doc.getNumberOfPages());
   ok(doc.output().includes("Page 1 of " + doc.getNumberOfPages()));
 });
+t("vehicle check PDF lists every item with its result", () => {
+  const items = Object.fromEntries(V.ALL_ITEMS.map(i => [i.id, { mark: "fine", note: "" }]));
+  items.brakes = { mark: "defect", note: "Pedal sinks" };
+  const c = { checkId: "c1", date: "19/11/2026, 07:55:10", vehicle: "AB12 CDE", odometer: "84210", outcome: "Unfit", defects: "Brakes (critical): Pedal sinks", items };
+  const doc = P.checkPdf(c, V.CHECK_SECTIONS, V.renewalStatus({ insurance: "2027-01-01" }, day(2026, 11, 19)), { driver: "Ann", compress: false });
+  const out = doc.output();
+  ok(out.includes("Pedal sinks") && out.includes("Wheel nuts") && out.includes("01/01/2027"), "content missing");
+  eq(P.fileName("check", c), "Vehicle check 2026-11-19 AB12 CDE.pdf");
+  ok(P.checkPdf({ date: "x", outcome: "Fit" }, V.CHECK_SECTIONS, [], {}).output().length > 1000, "old check without items");
+});
 t("file names", () => {
   eq(P.fileName("receipt", trips[0]), "Taxi receipt 2026-11-19.pdf");
   eq(P.fileName("statement", P.periodRange("last-month", day(2026, 11, 20))), "Earnings statement 2026-10-01 to 2026-10-31.pdf");

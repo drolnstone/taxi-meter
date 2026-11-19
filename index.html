@@ -226,7 +226,10 @@ details.more summary:focus-visible{outline:3px solid var(--focusRing);outline-of
   margin-left:auto;margin-right:auto}
 
 /* ---------- Theme picker ---------- */
-#themePicker{display:flex;gap:8px}
+#themePicker,#vehiclePicker{display:flex;gap:8px}
+#vehiclePicker button{flex:1;margin-top:0;padding:12px 6px;font-size:15px;
+  background:var(--field);color:var(--ink);border:1px solid var(--line)}
+#vehiclePicker button[aria-pressed="true"]{background:var(--blueDeep);color:#fff;border-color:var(--blueDeep)}
 #themePicker button{flex:1;margin-top:0;padding:12px 6px;font-size:15px;
   background:var(--field);color:var(--ink);border:1px solid var(--line)}
 #themePicker button[aria-pressed="true"]{background:var(--blueDeep);color:#fff;border-color:var(--blueDeep)}
@@ -295,6 +298,7 @@ details.more summary:focus-visible{outline:3px solid var(--focusRing);outline-of
 .renewNote{font-size:13px;color:var(--dim);line-height:1.5;margin:10px 0 0}
 .chkHist{font-size:14px;color:var(--ink2);padding:8px 0;border-bottom:1px solid var(--line)}
 .chkHist:last-child{border-bottom:none}
+.chkHist .chkPdf{margin:4px 0 0;padding:6px 0;font-size:14px}
 #appVersions{font-size:13px;color:var(--dim);text-align:center;margin:8px 0 0}
 
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}
@@ -542,6 +546,7 @@ details.more summary:focus-visible{outline:3px solid var(--focusRing);outline-of
   <div class="card">
     <h3>Recent checks</h3>
     <div id="checkHistory"></div>
+    <div id="checkPdfStatus" class="statusLine" role="status" aria-live="polite" aria-atomic="true"></div>
   </div>
 </section>
 
@@ -586,6 +591,15 @@ details.more summary:focus-visible{outline:3px solid var(--focusRing);outline-of
       <button type="button" data-theme-choice="dark"  aria-pressed="false">Dark</button>
     </div>
     <p id="themeNote"></p>
+  </div>
+
+  <div class="card">
+    <h3>Vehicle check and reminders</h3>
+    <div id="vehiclePicker" role="group" aria-label="Vehicle check and reminders">
+      <button type="button" data-vehicle-choice="on"  aria-pressed="true">On</button>
+      <button type="button" data-vehicle-choice="off" aria-pressed="false">Off</button>
+    </div>
+    <p id="vehicleNote" class="renewNote"></p>
   </div>
 
   <div class="card">
@@ -640,7 +654,7 @@ details.more summary:focus-visible{outline:3px solid var(--focusRing);outline-of
 
 /* Printed on Settings with the sheet's own version (the minibus app's
    "versions on the foot"). Bump with CACHE_VERSION in sw.js. */
-const APP_VERSION = "1.8.1"
+const APP_VERSION = "1.9.0"
 
 const SYNC_URL = "https://script.google.com/macros/s/AKfycbwfVdwML13iR7X_RQDB9ntchayc-byxHEWjp__Xcxiy9w0LmaepWt5VwAaYNd4BAppx/exec"
 
@@ -1039,6 +1053,7 @@ function resolveRoute(want){
   if(!validatedDriverId) return "signin"
   if(want === "summary") return summaryContext ? "summary" : "home"
   if(want === "signin" || want === "trip") return "home"
+  if(want === "vehicle" && !vehicleOn()) return "settings"
   return PAGES.indexOf(want) >= 0 ? want : "home"
 }
 
@@ -2825,6 +2840,7 @@ function outcomeClass(o){
 function renderVehicleBanner(){
   const host = $("vehicleBanner")
   if(!host) return
+  if(!vehicleOn()){ host.innerHTML = ""; return }
   let html = ""
   TaxiVehicle.renewalWarnings(readRenewals()).forEach(r=>{
     const cls = (r.level === "expired" || r.level === "today") ? "bad"
@@ -2850,6 +2866,7 @@ $("vehicleBanner").addEventListener("click", e=>{
    and nothing more. The vehicle is the driver's own, so what they decide is
    not sent anywhere. */
 async function preflightVehicle(){
+  if(!vehicleOn()) return true
   const expired = TaxiVehicle.blockingRenewals(readRenewals())
   if(expired.length){
     const ok = await ask("Your " + expired.map(r=>r.name.toLowerCase()).join(" and ") + (expired.length>1?" have":" has") + " run out",
@@ -2894,7 +2911,8 @@ function renderVehicle(){
       "<div class='row sm'><span>Checked</span><span>"+esc(c.date)+"</span></div>"+
       (c.vehicle ? "<div class='row sm'><span>Vehicle</span><span>"+esc(c.vehicle)+"</span></div>" : "")+
       (c.defects ? "<div class='warn bad'>Defects: "+esc(c.defects)+"</div>" : "")+
-      (c.advisories ? "<div class='warn'>Advisories: "+esc(c.advisories)+"</div>" : "")
+      (c.advisories ? "<div class='warn'>Advisories: "+esc(c.advisories)+"</div>" : "")+
+      "<button type='button' class='ghost' data-check-pdf='"+esc(c.checkId)+"'>Save as PDF</button>"
     $("checkStartBtn").textContent = "Check again"
   } else {
     today.innerHTML = "<p class='chkLede'>For you only: saved on this phone, not sent anywhere. Walk round the vehicle before your first job. Every item is Fine, Advisory "+
@@ -3000,6 +3018,7 @@ $("checkSendBtn").addEventListener("click", async ()=>{
     defects: TaxiVehicle.describeFindings(o.defects),
     advisories: TaxiVehicle.describeFindings(o.advisories),
     renewals: TaxiVehicle.renewalSummary(readRenewals()),
+    items: JSON.parse(JSON.stringify(checkDraft.results)),
     driverId: validatedDriverId
   }
   writeJson(CHECKS_KEY, [rec].concat(readChecks()).slice(0, KEEP_CHECKS))
@@ -3016,8 +3035,49 @@ function renderCheckHistory(){
   $("checkHistory").innerHTML = list.length ? list.map(c=>
     "<div class='chkHist'>"+esc(c.date)+" · <strong>"+esc(c.outcome)+"</strong>"+(c.vehicle ? " · "+esc(c.vehicle) : "")+
     (c.defects ? "<br>Defects: "+esc(c.defects) : "")+(c.advisories ? "<br>Advisories: "+esc(c.advisories) : "")+
+    "<button type='button' class='linkBtn chkPdf' data-check-pdf='"+esc(c.checkId)+"'>Save as PDF</button>"+
     "</div>").join("") : "<div class='empty'>No checks yet.</div>"
 }
+
+/* The driver's own copy, to keep or print. Made on the phone, sent nowhere. */
+async function saveCheckPdf(id){
+  const c = readChecks().filter(x=>x.checkId === id)[0]
+  if(!c) return
+  const el = $("checkPdfStatus")
+  setStatus(el, "Making the PDF…")
+  try{
+    await loadPdfLib()
+    const doc = TaxiPdf.checkPdf(c, TaxiVehicle.CHECK_SECTIONS, TaxiVehicle.renewalStatus(readRenewals()), pdfOptions())
+    await deliverPdf(doc, TaxiPdf.fileName("check", c), el)
+  }catch(err){
+    console.error("[taxi] check pdf:", err)
+    setStatus(el, "⚠ " + (err && err.message || "The PDF could not be made."), "bad")
+  }
+}
+$("page-vehicle").addEventListener("click", e=>{
+  const b = e.target.closest("[data-check-pdf]")
+  if(b) saveCheckPdf(b.dataset.checkPdf)
+})
+
+/* ---- on or off, the driver's choice ---- */
+function vehicleOn(){ try{ return localStorage.vehicleFeature !== "off" }catch(e){ return true } }
+function applyVehicleChoice(){
+  const on = vehicleOn()
+  const tab = tabBar.querySelector("[data-route=vehicle]")
+  show(tab, on)
+  for(const b of $("vehiclePicker").querySelectorAll("button"))
+    b.setAttribute("aria-pressed", String((b.dataset.vehicleChoice === "on") === on))
+  $("vehicleNote").textContent = on
+    ? "A daily check and renewal reminders, kept on this phone only. Turn off if you do not want them."
+    : "Off. No Vehicle tab, no reminders and no questions before a trip. Your saved checks and dates are kept."
+  renderVehicleBanner()
+}
+$("vehiclePicker").addEventListener("click", e=>{
+  const b = e.target.closest("button[data-vehicle-choice]")
+  if(!b) return
+  try{ localStorage.vehicleFeature = b.dataset.vehicleChoice }catch(err){}
+  applyVehicleChoice()
+})
 
 /* ---- renewal dates ---- */
 
@@ -3133,7 +3193,7 @@ if(wasRunning && validatedDriverId){
 }
 
 update(); renderHistory(); updateDashboard(); renderTariffTable(); renderStorage(); renderStuck()
-renderVehicleBanner()
+applyVehicleChoice()
 scheduleSync()   /* anything left queued from a previous shift goes out on its own */
 
 /* Offline first load. Without this, Leaflet is fetched from the network on every

@@ -1,30 +1,32 @@
 TAXI METER: DEPLOY NOTE
 
-YOU ARE ON:   app 1.8.0 · sheet 1.1.0 · sw cache taxi-meter-v8 (or older, if PR #1 was never deployed)
-GOING TO:     app 1.8.1 · sheet 1.2.0 · sw cache taxi-meter-v9
+YOU ARE ON:   none of PR #1 or #2 deployed yet (Apps Script untouched)
+GOING TO:     app 1.9.0 · sheet 1.2.0 · sw cache taxi-meter-v9
 
-WHAT CHANGED
-The vehicle is the driver's own, so the Vehicle tab is now private to the driver:
-- Vehicle checks, defects and renewal dates stay on the driver's phone. They are
-  no longer sent to the sheet, and the sheet no longer has a "Vehicle Checks" tab
-  or the "Show vehicle checks with defects" menu item.
-- The start-trip prompts (expired documents, critical defect, no check today)
-  are still asked, but the driver's answer is no longer noted on the Log tab.
-- Wording on the Vehicle tab says the checks are saved on this phone only.
-Trips, fares, receipts, PDFs and versions are unchanged.
+WHAT CHANGED SINCE YOUR LIVE VERSION
+- Vehicle tab (the driver's own, on their phone only): a daily vehicle check
+  (Fine / Advisory / Defect on 28 items) and renewal dates for plate, badge,
+  insurance, MOT, DVLA licence and meter test, with reminders 60, 30 and 7 days
+  out and a question before a trip if one has run out. Nothing about the
+  vehicle is sent to the sheet or the Log tab.
+- Each check can be saved or printed as a PDF ("Save as PDF").
+- Settings → Vehicle check and reminders: On / Off, the driver's choice.
+- Receipts can be saved as a PDF; Earnings has an earnings statement PDF for
+  this/last week, this/last month or the tax year to date.
+- Settings shows "App 1.9.0 · Sheet 1.2.0" after Test connection.
+- Code.gs only adds the version number; trips are unchanged.
 
 DEPLOY
 1. Paste Code.gs into the Apps Script editor, save, then
    Deploy → Manage deployments → edit → New version.
 2. Publish index.html, sw.js, vehicle.js, pdf.js and the vendor/ folder to the
    same folder as before.
-3. If a "Vehicle Checks" tab was already made by the last version, you can
-   delete it. Nothing reads it any more.
 
 CHECKS AFTERWARDS
 A. Open the deployment URL in a browser: it shows "version": "1.2.0".
-B. On a phone: Settings → Test connection reads App 1.8.1 · Sheet 1.2.0.
-C. Vehicle tab → do a check and send it. "Recent checks" lists it, and nothing
-   new appears on the sheet.
-D. Start a trip with no check done today: asked once. The Log tab says only
-   "Started Trip".
+B. Phone: Settings → Test connection reads App 1.9.0 · Sheet 1.2.0.
+C. Vehicle tab → Start today's check → Mark the rest Fine → Send → Save as PDF.
+   Nothing new appears on the sheet.
+D. Settings → Vehicle check and reminders → Off: the Vehicle tab goes, and
+   Start trip asks nothing. Turn it back On.
+E. Finish a short trip → Save as PDF. Earnings → Make a PDF statement.
