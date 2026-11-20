@@ -51,3 +51,31 @@ D. Settings → Vehicle check and reminders → Off: the Vehicle tab goes, and
 E. Meter tab: enter the reg, finish a short trip. The receipt shows
    "Vehicle: AB12 CDE" and the Trips row has it under "Vehicle Reg".
 F. Summary → Save as PDF. Earnings → Make a PDF statement.
+
+
+GOING LIVE ON MERGE (set up once, then merging a PR is the deploy)
+
+The app (GitHub Pages)
+1. GitHub → drolnstone/taxi-meter → Settings → Pages → Source: Deploy from a
+   branch → main, / (root) → Save. The app is then at
+   https://drolnstone.github.io/taxi-meter/ and every merge republishes it.
+   If drivers already use another address, keep it or move them over once:
+   the phone's saved trips stay with the old address until synced.
+
+Code.gs (GitHub Actions, .github/workflows/apps-script.yml)
+1. https://script.google.com/home/usersettings → Google Apps Script API: On.
+2. On a computer with Node: npm install -g @google/clasp@2.4.2, then
+   clasp login, and sign in with the Google account that owns the sheet.
+   It writes .clasprc.json in your home folder.
+3. Apps Script → Project Settings → copy the Script ID.
+4. The Deployment ID is the part of SYNC_URL in index.html between /s/ and
+   /exec (starts AKfycb). Or: Deploy → Manage deployments → the web app.
+5. GitHub → drolnstone/taxi-meter → Settings → Secrets and variables →
+   Actions → New repository secret, three times:
+   CLASPRC_JSON (the whole of .clasprc.json), SCRIPT_ID, DEPLOYMENT_ID.
+6. Actions → Apps Script → Run workflow. It ends with "Code.gs 1.2.0 is
+   live", or "already live".
+
+Still by hand: anything that asks for a new Google permission (like running
+lockSheet the first time) and menu actions such as rebuilding the Summary tab.
+The deploy note for each release says when.

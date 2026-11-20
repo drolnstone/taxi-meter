@@ -1,0 +1,112 @@
+# Puts Code.gs live when a change to it reaches main. It does what Asim did
+# by hand: paste Code.gs into the Apps Script editor, then Deploy → Manage
+# deployments → New version. Ported from the ushers and minibus repos'
+# workflow of the same name.
+#
+# It first pulls the live project, so the manifest (appsscript.json) stays
+# exactly as it is; only Code.gs is replaced. The web app deployment is
+# updated in place, so its /exec address (SYNC_URL in index.html) never
+# changes and the drivers' phones keep syncing.
+#
+# Needs three repository secrets, set once (DEPLOY.txt, "Going live on merge"):
+#   CLASPRC_JSON   the whole ~/.clasprc.json that `clasp login` writes
+#   SCRIPT_ID      Apps Script → Project Settings → Script ID
+#   DEPLOYMENT_ID  the web app's deployment ID (the part of the /exec address
+#                  between /s/ and /exec)
+# Until all three are there it does nothing and stays green.
+#
+# Only after the Tests workflow has passed on that commit of main, and only
+# for the newest commit on main, so a slow run for an older merge cannot put
+# older code back. It does nothing when the web app already runs this
+# Code.gs, so a merge that leaves Code.gs alone makes no new version.
+name: Apps Script
+
+on:
+  workflow_run:
+    workflows: [Tests]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: apps-script
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+      SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
+      DEPLOYMENT_ID: ${{ secrets.DEPLOYMENT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The commit the tests passed on, not whatever main is now.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Still the newest commit on main?
+        id: newest
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          TIP=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [ "${{ github.event_name }}" = "workflow_run" ] && [ -n "$TIP" ] && [ "$TIP" != "$SHA" ]; then
+            echo "::notice::main has moved on to ${TIP::7}; its own run deploys it."
+            echo "go=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=yes" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Secrets present?
+        id: ready
+        if: steps.newest.outputs.go == 'yes'
+        run: |
+          if [ -z "$CLASPRC_JSON" ] || [ -z "$SCRIPT_ID" ] || [ -z "$DEPLOYMENT_ID" ]; then
+            echo "::notice::CLASPRC_JSON, SCRIPT_ID or DEPLOYMENT_ID is not set, so Code.gs was not deployed. Paste it by hand."
+            echo "go=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=yes" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.ready.outputs.go == 'yes'
+        with:
+          node-version: 22
+
+      - name: Push Code.gs and update the web app
+        if: steps.ready.outputs.go == 'yes'
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          npm install -g @google/clasp@2.4.2
+          printf '%s' "$CLASPRC_JSON" > ~/.clasprc.json
+
+          mkdir live && cd live
+          printf '{"scriptId":"%s","rootDir":".","fileExtension":"gs"}' "$SCRIPT_ID" > .clasp.json
+          clasp pull
+          [ -f appsscript.json ] || { echo "::error::Pull brought no appsscript.json"; exit 1; }
+          [ -f Code.gs ] || { echo "::error::The live project has no file called Code"; exit 1; }
+
+          # Judged by what the web app runs, not by the saved code, so a push
+          # that went through with a deploy that failed is deployed now.
+          VERSION=$(grep -o 'SHEET_VERSION = "[^"]*"' ../Code.gs | cut -d'"' -f2)
+          LIVE=$(clasp deployments 2>&1 | grep "$DEPLOYMENT_ID" || true)
+          if cmp -s ../Code.gs Code.gs && echo "$LIVE" | grep -q "sheet $VERSION,"; then
+            echo "::notice::Code.gs $VERSION is already live; nothing to deploy"
+            exit 0
+          fi
+          if ! cmp -s ../Code.gs Code.gs; then
+            cp ../Code.gs Code.gs
+            clasp push --force
+          fi
+
+          OUT=$(clasp deploy -i "$DEPLOYMENT_ID" -d "sheet $VERSION, ${SHA::7}" 2>&1)
+          echo "$OUT" | grep -q "$DEPLOYMENT_ID" || { echo "$OUT"; echo "::error::The web app was not updated"; exit 1; }
+          echo "::notice::Code.gs $VERSION is live"
